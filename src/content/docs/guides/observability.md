@@ -117,6 +117,31 @@ A logger that throws does **not** silently stop writing: the subscriber is wrapp
 back to `console`. `Bus.emit` isolates listener failures by design — an observer must never break a
 request — and the wrapper keeps that guarantee without paying for it in silence.
 
+## The names you can import
+
+Everything above works untyped; these exist for when you want the types written down.
+
+| Export | What it is |
+|---|---|
+| `Logger` | the four-method shape `createApp({ logger })` accepts |
+| `LogLevel` | `'debug' \| 'info' \| 'warn' \| 'error'` |
+| `LogFields` | the optional structured second argument |
+| `createDefaultLogger(pretty?)` | builds the built-in logger; pass `true`/`false` to force JSON or human-readable instead of letting it detect a TTY |
+| `withConsoleFallback(logger)` | wraps a logger so a throw inside it falls back to `console` rather than vanishing |
+| `LifecycleEvent` | the union of every event name in the table above |
+| `EventPayload` | the shape a subscriber receives |
+| `Correlation` | the request-identifying subset spread into each event |
+
+`withConsoleFallback` is worth knowing about if you pass your own logger. A logger that throws while
+reporting a failure is the worst moment to lose output, and core cannot catch that for you without
+also swallowing the errors you asked it to report:
+
+```ts
+import { withConsoleFallback } from '@green-tea/core';
+
+const app = createApp({ modules: [AppModule], logger: withConsoleFallback(myLogger) });
+```
+
 ## Metrics and tracing
 
 There is no metrics registry in core and no OpenTelemetry exporter in core. Both read the stream
