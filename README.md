@@ -7,6 +7,14 @@ The documentation site for [`@green-tea/core`](https://github.com/Expressive-Tea
 It was split out of the core repository, with its history, so that a documentation change does not
 run the framework's test matrix and a framework release does not wait on a docs typo.
 
+> **Nothing here fails when these pages are wrong.**
+> This repository imports nothing from `@green-tea/core`, so a guide can describe a decorator that
+> was renamed, an option that was removed or a method that never shipped, and the build stays green.
+> Code examples are prose, and prose does not get type-checked. **A change to public API in
+> [green-tea](https://github.com/Expressive-Tea/green-tea) updates the page documenting it, in the
+> same pull request.** That is a rule, not a check — no check exists yet. Issue #18 is what a stale
+> page looks like from a reader's side, and it happened while both still lived in one repository.
+
 ## Running it
 
 ```bash
@@ -52,15 +60,6 @@ restated, so the two sites cannot drift into contradicting each other.
 
 Every push and pull request to `main` runs `.github/workflows/ci.yml`, which builds the site and
 audits dependencies. A tag is only worth cutting once that is green.
-
-## The seam this repository opens
-
-Documentation and framework can now disagree without anything failing — nothing here imports
-`@green-tea/core`, so an API change does not break this build. Code examples in these pages are
-prose, and prose does not get type-checked.
-
-Until that is automated, the rule is manual and belongs in the core repository's review: **a pull
-request that changes public API updates the page that documents it, in the same session.**
 
 ## License
 
