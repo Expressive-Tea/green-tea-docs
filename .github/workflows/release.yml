@@ -1,0 +1,44 @@
+name: Release → dist.tar.gz
+
+# Production artifact. Runs on GITHUB ONLY, on a version tag. Builds the static site and
+# packages dist/ as a .tar.gz attached to the GitHub release. The deploy itself is manual:
+# the archive is unpacked into the /docs directory of the cPanel docroot, which is why the
+# tar is taken from *inside* dist/ (`-C dist .`) — the archive root is the directory's
+# contents, not a wrapping folder.
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  package:
+    if: ${{ github.server_url == 'https://github.com' }}
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    env:
+      ARCHIVE_NAME: green-tea-docs-${{ github.ref_name }}.tar.gz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      # Deliberately `critical`, not `moderate` — the same call the site repository makes.
+      # npm audit reads a live advisory feed, so a release gated on it fails by calendar
+      # date rather than by anything the release changed, at the moment there is least time
+      # to judge whether a fix is safe. What ships here is built HTML, CSS and JS; Astro and
+      # Starlight are build-time tools that never reach a visitor. `critical` keeps the
+      # tripwire for the catastrophic case, and ci.yml still gates every PR at `moderate`.
+      - run: npm audit --audit-level=critical
+      - run: npm run build
+      - name: Package dist/
+        run: tar -czf "$ARCHIVE_NAME" -C dist .
+      # A build that produces no pages still produces a valid, useless archive. This is the
+      # cheapest thing that fails when that happens, before it reaches cPanel.
+      - name: Verify the archive has a home page
+        run: tar -tzf "$ARCHIVE_NAME" | grep -Fx './index.html'
+      - name: Attach to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          files: ${{ env.ARCHIVE_NAME }}

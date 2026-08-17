@@ -30,6 +30,29 @@ Node 18+ and nothing else — the site has no dependency on the framework it doc
 The site is served under `/docs`, not at the domain root: `base: '/docs'` in `astro.config.mjs`. The
 root is the marketing site, which lives in its own repository.
 
+## Releasing
+
+Deployment is deliberately manual — cPanel has no API here, and a docs site does not change often
+enough to justify pretending otherwise. CI produces the artifact; a person uploads it.
+
+```bash
+git tag v26.8.0 && git push origin v26.8.0
+```
+
+That runs `.github/workflows/release.yml`, which builds the site and attaches
+`green-tea-docs-v26.8.0.tar.gz` to a GitHub release. Download it, then unpack it into the `/docs`
+directory of the cPanel docroot.
+
+The archive is taken from *inside* `dist/`, so it unpacks as the directory's contents rather than as
+a wrapping folder — `index.html` lands at `/docs/index.html`.
+
+There is no `.htaccess` here on purpose. The domain root's own `.htaccess`, owned by the marketing
+site, already applies to `/docs`: HTTPS redirect and cache headers are inherited rather than
+restated, so the two sites cannot drift into contradicting each other.
+
+Every push and pull request to `main` runs `.github/workflows/ci.yml`, which builds the site and
+audits dependencies. A tag is only worth cutting once that is green.
+
 ## The seam this repository opens
 
 Documentation and framework can now disagree without anything failing — nothing here imports

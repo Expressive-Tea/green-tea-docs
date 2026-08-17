@@ -1,0 +1,23 @@
+name: CI
+
+# Build gate. Runs on both forges (the .github path is read by Gitea and GitHub alike).
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm audit --audit-level=moderate
+      - run: npm run build
