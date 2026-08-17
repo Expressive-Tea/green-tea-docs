@@ -44,6 +44,7 @@ export default defineConfig({
           items: [
             { label: 'Introduction', link: '/' },
             { label: 'Getting started', slug: 'getting-started' },
+            { label: "What's new", slug: 'whats-new', badge: { text: 'beta.1', variant: 'tip' } },
           ],
         },
         {
@@ -82,6 +83,10 @@ export default defineConfig({
             { label: 'Decorators', slug: 'reference/decorators' },
             { label: 'createApp options', slug: 'reference/createapp' },
           ],
+        },
+        {
+          label: 'Project',
+          items: [{ label: 'Contributors', slug: 'contributors' }],
         },
       ],
     }),
