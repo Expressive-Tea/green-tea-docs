@@ -56,6 +56,7 @@ export default defineConfig({
             { label: 'HTML & views', slug: 'guides/html' },
             { label: 'Transport security', slug: 'guides/security' },
             { label: 'Plugins', slug: 'guides/plugins' },
+            { label: 'Circuit breakers', slug: 'guides/circuit-breaker' },
             { label: 'Observability', slug: 'guides/observability' },
             { label: 'Graph introspection', slug: 'guides/introspection' },
             { label: 'OpenAPI', slug: 'guides/openapi' },
