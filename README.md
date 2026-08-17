@@ -38,3 +38,8 @@ prose, and prose does not get type-checked.
 
 Until that is automated, the rule is manual and belongs in the core repository's review: **a pull
 request that changes public API updates the page that documents it, in the same session.**
+
+## License
+
+MIT, the same as the framework — see [LICENSE](./LICENSE). These pages were part of the core
+repository until the split, so the licence follows them rather than starting over.
