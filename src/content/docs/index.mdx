@@ -1,12 +1,12 @@
 ---
 title: Green Tea.
-description: A zen, opinionated, type-safe framework — your API is a graph you can see, slice, and trust, not a chain.
+description: A zen, opinionated, type-safe framework — declare what your code needs, and green-tea derives, validates and runs the execution graph.
 template: splash
 hero:
   image:
     file: ../../assets/logo.svg
     alt: Green Tea
-  tagline: A zen, opinionated, type-safe framework. Your API is a dependency graph you can see, slice, and trust — not a mutable bag threaded through positional middleware. That's the tea. 🍵
+  tagline: 'A zen, opinionated, type-safe framework. Declare intent; green-tea derives the execution graph, validates it before traffic, and runs only what each route requires. Less infrastructure in your application. Less infrastructure in your head. 🍵'
   actions:
     - text: Get started
       link: /docs/getting-started/
@@ -22,7 +22,9 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 ## Less to hold in your head
 
-Most frameworks make you keep the whole request in your head: which middleware ran, whether `req.user` exists by now, what fired in what order. green-tea puts the request **on the page** — you declare what each step _needs_ and _produces_, and the framework computes the order, type-checks the wiring, and can print the whole thing.
+As an application grows, more of the day goes on remembering infrastructure: what runs first, what mutates the context, what was registered where, and which package owns which part of the request. None of that is your product.
+
+green-tea moves that bookkeeping into the framework. You declare what each step _needs_ and _produces_; it derives the order, validates the wiring at boot, runs only the slice each route requires — and prints the whole thing when you ask.
 
 <CardGrid stagger>
   <Card title="A graph, not a chain" icon="puzzle">
