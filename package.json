@@ -2,10 +2,12 @@
   "name": "green-tea-docs",
   "type": "module",
   "private": true,
+  "version": "26.8.0-beta.1",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "verify:release": "node scripts/verify-release-tag.mjs"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.41.6",

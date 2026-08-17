@@ -1,6 +1,16 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
+/**
+ * The `@green-tea/core` release these pages describe.
+ *
+ * Exported and checked rather than written in prose: `npm run verify:release` fails if this, the
+ * git tag and package.json disagree, so a docs release cannot claim to document a version it does
+ * not. It is shown on every page because a reader arriving from a search result has no other way
+ * to tell whether what they are reading matches what they installed.
+ */
+export const documentsCoreVersion = '26.8.0-beta.1';
+
 // Docs site for @green-tea/core. Content lives in src/content/docs/**.
 export default defineConfig({
   site: 'https://green-tea.expressive-tea.io',
@@ -21,6 +31,7 @@ export default defineConfig({
       ],
       // Let the content-backed 404.md own /404; otherwise Astro also injects a conflicting route.
       disable404Route: true,
+
       title: 'Green Tea.',
       description: 'A zen, opinionated, type-safe framework — your API is a graph, not a chain.',
       logo: { src: './src/assets/logo.svg', alt: 'Green Tea' },

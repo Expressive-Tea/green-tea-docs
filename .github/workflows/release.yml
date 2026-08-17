@@ -17,12 +17,17 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ARCHIVE_NAME: green-tea-docs-${{ github.ref_name }}.tar.gz
+      RELEASE_TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm ci
+      # A docs release claims to describe one @green-tea/core version. This fails when the tag,
+      # package.json and the version the site prints on every page disagree — three places that a
+      # hurried release is exactly the moment to let drift apart.
+      - run: npm run verify:release
       # Deliberately `critical`, not `moderate` — the same call the site repository makes.
       # npm audit reads a live advisory feed, so a release gated on it fails by calendar
       # date rather than by anything the release changed, at the moment there is least time
