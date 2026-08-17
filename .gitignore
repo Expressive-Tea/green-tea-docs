@@ -1,0 +1,11 @@
+# Node
+node_modules/
+*.log
+
+# Astro
+dist/
+.astro/
+
+# Env
+.env
+.env.*
