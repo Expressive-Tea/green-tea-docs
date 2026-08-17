@@ -65,6 +65,10 @@ Without an explicit OPTIONS route, OPTIONS on an existing path returns `204` wit
 
 `/path` and `/path/` are equivalent. Repeated slashes such as `/path//item` are rejected rather than collapsed, and malformed percent encoding is rejected; both return `400 Bad Request` with the configured security/CORS headers. Query strings do not participate in route matching.
 
+**`.` and `..` are resolved, not rejected.** `/public/../admin` matches a route declared as `/admin`, exactly as the URL bar and every HTTP client already treat it, and `%2e` counts as a dot — `/public/%2e%2e/admin` resolves the same way, so the encoded spelling cannot reach a route the plain one resolves away from.
+
+Resolving rather than rejecting is not the stricter choice, and it is not green-tea's to make: Deno, Bun and Cloudflare Workers resolve dot segments inside the `Request` constructor, before the framework is handed anything, so the raw path is unrecoverable there. Rejecting would be implementable on Node alone, and the same request would then reach different routes depending on where you deployed. If a path traversal matters to you, it is worth knowing that a proxy or WAF matching on the literal string sees `/public/...` while the app sees `/admin`.
+
 A path that no route matches returns `404`. A path that **does** exist but under a different method returns **`405 Method Not Allowed`** with an `Allow` header listing the methods that do match — not a `404`.
 
 ## Matcher scale

@@ -36,6 +36,10 @@ An app-scope value, built once at boot and cached, addressable by `provides`.
 | `provides` | `string` | — | the token this provider produces (required) |
 | `needs` | `string[]` | `[]` | tokens it depends on |
 | `optional` | `boolean` | `false` | if it throws on boot, degrade instead of aborting ([details](/docs/guides/dependency-injection/)) |
+
+A provider class may also declare an optional **`dispose()`** method. `app.close()` awaits it during
+shutdown, in reverse boot order, so a provider closes before the ones it depends on
+([releasing what a provider opened](/docs/guides/dependency-injection/#releasing-what-a-provider-opened)).
 | `export` | `boolean` | `false` | expose over the mesh control channel ([mesh](/docs/guides/mesh/)) |
 
 ### `@Step(options)`
