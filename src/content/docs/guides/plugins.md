@@ -1,11 +1,12 @@
 ---
 title: Plugins
-description: "Extending the app safely via bus.on and scope.add."
+description: "Extending the app safely via bus.on, scope.add and onShutdown."
 ---
 
-A plugin is a function that receives the app's API at boot. It gets exactly two
-capabilities: **observe** the running system through `bus.on(...)`, and **extend its own
-scope** through `scope.add(...)`. That's the whole surface — and it's deliberately narrow.
+A plugin is a function that receives the app's API at boot. It gets exactly three
+capabilities: **observe** the running system through `bus.on(...)`, **extend its own
+scope** through `scope.add(...)`, and **release what it opened** through `onShutdown(...)`.
+That's the whole surface — and it's deliberately narrow.
 
 ```typescript
 const logger = (api: any) => {
@@ -16,6 +17,35 @@ const logger = (api: any) => {
 
 const app = createApp({ modules: [ApiModule], plugins: [logger] });
 ```
+
+## Releasing what a plugin opened
+
+A plugin that starts a timer, opens a pool or holds a socket registers its cleanup with
+`onShutdown`. It is **awaited** — unlike a `bus.on` listener, which is fire-and-forget by
+design — so `app.close()` does not return until it has finished or the deadline passes.
+
+```typescript
+class MetricsPlugin {
+  #timer?: ReturnType<typeof setInterval>;
+
+  mount = (api: any) => {
+    this.#timer = setInterval(() => this.flush(), 10_000);
+    api.onShutdown(() => {              // takes no arguments
+      clearInterval(this.#timer);       // the closure already holds what it needs
+      return this.flush();              // return a promise and it will be awaited
+    });
+  };
+}
+```
+
+The callback receives nothing on purpose. Whatever needs closing is already in the closure of
+the code that opened it, so no handle has to travel anywhere. If you find yourself wanting an
+argument, the registration probably belongs closer to the resource.
+
+A failing teardown is logged and the remaining ones still run — one broken callback must not
+leave the process up. See [dependency injection](/docs/guides/dependency-injection/#releasing-what-a-provider-opened)
+for the provider equivalent, and [runtimes](/docs/guides/runtimes/) for the one runtime where
+none of this happens.
 
 ## Isolation is structural
 

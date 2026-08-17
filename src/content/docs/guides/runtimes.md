@@ -41,18 +41,26 @@ destroys excess sockets without sending an HTTP response. `Deno.serve` and `Bun.
 equivalent active-socket cap, so `serveDeno` and `serveBun` cannot enforce this option. Apply the
 connection limit at the deployment platform or reverse proxy on those runtimes.
 
-**Shutdown belongs to whoever owns the server.** `app.close()` is Node-only. On Deno and Bun the
-app is served through `app.fetch` and never through `app.listen()`, so `app.close()` has no server
-to drain and returns immediately — it warns if you passed `timeoutMs`. The server `serveDeno()` and
-`serveBun()` return carries the same `close({ timeoutMs })` instead:
+**Draining belongs to whoever owns the server.** On Deno and Bun the app is served through
+`app.fetch` and never through `app.listen()`, so `app.close()` has no connections to drain — it
+warns if you passed `timeoutMs`. The server `serveDeno()` and `serveBun()` return carries the same
+`close({ timeoutMs })` instead:
 
 ```ts
 const server = serveBun(app, { port: 3000 });   // or serveDeno(app, { port: 3000 })
 await server.close({ timeoutMs: 5_000 });
 ```
 
+**Shutdown teardown runs on all three, from that same `close()`.** A provider's `dispose()`, a
+plugin's `onShutdown` and an app's `hooks` behave identically on Node, Deno and Bun — one call is
+enough, because `serveDeno()`/`serveBun()`'s `close()` drains the connections and then the app.
+
 On Cloudflare Workers there is nothing to close: `edgeHandler` is a handler, not a server, and the
-platform owns the lifecycle.
+platform owns the lifecycle. **Teardown therefore never runs on the edge, and nothing can make it** —
+an isolate is discarded rather than closed, so there is no shutdown to intercept. A provider or
+plugin that relies on `dispose()`/`onShutdown` to release something is silently inert there. Anything
+that must be released belongs in the request that acquired it, or in a platform binding that manages
+its own lifetime.
 
 One difference the deadline cannot hide:
 

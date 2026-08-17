@@ -53,9 +53,54 @@ const app = createApp({ modules: [ApiModule] });
 await app.listen(3000);
 // GET /api/users/9  (header x-token) → { "requested": "9", "you": { "id": "...", "name": "Diego" } }
 
-await app.close();   // graceful shutdown: drains in-flight, closes streams + mesh links,
-                     // then force-closes whatever is left after 10s — app.close({ timeoutMs })
+await app.close();   // graceful shutdown: drains in-flight, closes streams + mesh links, runs
+                     // registered teardown, then force-closes whatever is left after 10s
 ```
+
+## Releasing what a provider opened
+
+A provider that opens something — a pool, a client, a file handle — closes it in `dispose()`.
+The method is optional; a provider without one is skipped.
+
+```typescript
+@Provider({ provides: 'db' })
+class Db {
+  #pool = new Pool(process.env.DATABASE_URL);
+
+  provide() {
+    return { db: this.#pool };
+  }
+
+  async dispose() {     // awaited by app.close(); no arguments, the instance holds its own pool
+    await this.#pool.end();
+  }
+}
+```
+
+**Teardown runs in reverse boot order.** Providers boot in dependency order, so they close in the
+opposite one: a `cache` that needs `db` shuts down before the `db` it is still holding. You never
+declare that order — it is the same graph that decided boot order, read backwards.
+
+A provider that *failed* to boot is never disposed: nothing it might close was ever opened. A
+`dispose()` that throws is logged and the rest still run, because one broken teardown must not
+leave the process up.
+
+It all happens inside `close()`'s deadline, so a slow `dispose()` cannot hold a deploy open. If a
+connection must get its chance to close, reserve part of that budget:
+
+```typescript
+createApp({ modules: [ApiModule], shutdownTimeoutMs: 10_000, teardownTimeoutMs: 2_000 });
+// drain gets at most 8s, teardown is guaranteed 2s, close() still returns within 10s
+```
+
+Left unset, the drain may use the whole budget and teardown takes what is left. A
+`teardownTimeoutMs` larger than `shutdownTimeoutMs` is rejected at boot — it is reserved out of
+that budget, not added to it.
+
+Plugins register the same thing with [`onShutdown`](/docs/guides/plugins/#releasing-what-a-plugin-opened),
+and an app that wants neither can pass `hooks: [{ onShutdown }]` to `createApp`. All three land in
+one registry with one order and one failure policy. None of it runs on
+[the edge](/docs/guides/runtimes/).
 
 ## `@Provider` — app-scope, memoized
 
