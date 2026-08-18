@@ -169,12 +169,31 @@ mesh: { teapots: [...], onManifestChange: 'refuse' }   // the default, and the o
 
 A future release may add `'reconcile'`, which rebuilds the graph instead of refusing. Naming the policy now means that arrives as an addition rather than as a change to what the default means — which matters when the two ends are separate processes on separate deploy cadences.
 
+## A request keeps its identity across the hop
+
+The RPC envelope carries the caller's `requestId` and `traceId`, and the teapot **adopts** them rather than opening its own — the same rule an incoming `x-request-id` gets, applied at the process boundary. So one request that crosses the mesh produces one trace, not two unrelated ones, and the teapot's `request:step:*` events carry the id the teacup already had.
+
+The envelope also carries `url`, so a proxied handler sees the path its caller asked for.
+
+Both are **optional on the wire**, which is why the protocol version did not move for them: a teapot running an older green-tea ignores what it does not recognise and keeps answering. You lose the correlation of that hop and nothing else.
+
+## Keeping the control channel honest
+
+The channel is authenticated, but an unauthenticated peer still gets to send bytes at it, so two limits bound what it can do before proving anything:
+
+- **A handshake deadline.** A peer that connects and never sends `hello` is hung up on after 10 seconds. The teacup has always bounded its side; this is the teapot's.
+- **A frame size cap.** `decode` runs `JSON.parse` on peer-controlled input, so frames above 4,000,000 characters are refused with close code `1009` — checked *before* parsing, since parsing is the expensive part being defended. The cap sits above the 1 MB default body limit a legitimate RPC can carry.
+
+:::caution[The secret travels in the handshake]
+The shared secret is sent verbatim in the `hello` frame. Over `ws://` that puts it in front of anyone on the path, so **use `wss://`** unless the link already runs inside an encrypted network. green-tea warns at boot for a `ws://` teapot that is not on loopback — a warning rather than a refusal, because a private network doing its own mutual TLS is a real deployment and the framework cannot tell the two apart.
+:::
+
 ## Protocol version
 
 Peers are separate processes on separate deploy cadences, so the wire is versioned: `MESH_PROTOCOL_VERSION` travels in the `hello` and `manifest` frames, and a mismatch is refused on both sides with both versions named. A teapot checks the version **before** the secret — a skewed peer is not an authentication failure, and reporting it as one would send you hunting the wrong bug.
 
-Bump the version and old peers refuse the connection loudly instead of misreading a frame.
+**The version is a compatibility boundary, not a changelog.** It moves only when a peer on the old version would *misparse a frame or misbehave silently* — a field removed, renamed or retyped, a new **required** field, or a new frame type that expects an answer the old peer cannot decode. Adding an **optional** field is none of those, so it does not move the number: `decode` validates only what a frame type requires and passes extras through. Bumping per change would make the number mean "work happened" rather than "we are incompatible", which is the one thing it exists to say.
 
 :::note[Skeleton limitations (by design)]
-No discovery, load-balancing, or failover yet. A teapot that is down when a teacup *boots* still fails that boot — reconnection covers links that connected at least once. A returning manifest is refused rather than reconciled, and extra exports in it are not spliced into the running graph. The request envelope omits `req.url`.
+No discovery, load-balancing, or failover yet. A teapot that is down when a teacup *boots* still fails that boot — reconnection covers links that connected at least once. A returning manifest is refused rather than reconciled, and extra exports in it are not spliced into the running graph.
 :::

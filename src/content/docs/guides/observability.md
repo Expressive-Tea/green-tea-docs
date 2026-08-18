@@ -31,6 +31,11 @@ second identity for a request that already has one.
 **A `traceparent` header is carried through untouched** as `traceId`. Core parses nothing and
 implements no propagation spec — W3C Trace Context belongs to the exporter that understands it.
 
+**The identity survives a mesh hop.** A request resolved from a remote teapot carries its
+`requestId` and `traceId` across the wire, and the teapot adopts them rather than opening its own —
+so the far side's events join the same trace instead of starting a second investigation. See
+[Mesh](/docs/guides/mesh/), which is still alpha.
+
 ### `route` is the pattern, always
 
 `route` is `/users/:id`, never `/users/42`. This is a contract, not an implementation detail: a
