@@ -53,6 +53,7 @@ unbounded label cardinality takes down the metrics backend rather than the appli
 | `boot:provider:start` / `:ok` / `:fail` | a provider booting |
 | `stream:open` / `:close` / `:error` | an SSE, ndjson or WebSocket connection |
 | `mesh:connect` / `:disconnect` / `:rpc:error` | mesh links |
+| `mesh:boot:retry` | a teapot that has not come up yet, still inside the boot grace ([mesh](/docs/guides/mesh/)) |
 | `plugin:mounted` | a plugin registered |
 
 ### Where a streaming request ends

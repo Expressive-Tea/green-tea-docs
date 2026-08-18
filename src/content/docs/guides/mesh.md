@@ -169,6 +169,21 @@ mesh: { teapots: [...], onManifestChange: 'refuse' }   // the default, and the o
 
 A future release may add `'reconcile'`, which rebuilds the graph instead of refusing. Naming the policy now means that arrives as an addition rather than as a change to what the default means — which matters when the two ends are separate processes on separate deploy cadences.
 
+## When a teapot is not there yet
+
+A teapot that is thirty seconds behind and a teapot that does not exist look identical for the first thirty seconds, and only one of them should stop a deploy. `bootTimeoutMs` is the grace for the first:
+
+```typescript
+mesh: { teapots: [...], bootTimeoutMs: 30_000 }   // the default is timeoutMs
+mesh: { teapots: [...], bootTimeoutMs: 0 }        // one attempt, no grace
+```
+
+Within that budget the connection is retried with backoff. When it passes, **the boot still fails** — and that is deliberate. A provider the graph depends on is not optional, so booting without it would only move the failure to the first request, where it is a caller's 503 instead of your deploy's error.
+
+**A refusal is not retried.** A wrong secret or a protocol-version mismatch is the teapot's decision and will be the same decision in thirty seconds, so it fails at once rather than spending the whole budget to reach an identical error. The two are told apart by whether the socket ever opened: a peer that accepted the connection and then hung up rejected you on purpose, while one that never accepted it may simply not be listening yet.
+
+Every retry is logged *and* emitted as `mesh:boot:retry`, so a slow boot is visible to whatever collects [lifecycle events](/docs/guides/observability/) and not only to whoever happens to be watching a terminal. It is kept separate from `mesh:disconnect`, which means a link that was up and went away — this one never came up.
+
 ## A request keeps its identity across the hop
 
 The RPC envelope carries the caller's `requestId` and `traceId`, and the teapot **adopts** them rather than opening its own — the same rule an incoming `x-request-id` gets, applied at the process boundary. So one request that crosses the mesh produces one trace, not two unrelated ones, and the teapot's `request:step:*` events carry the id the teacup already had.
