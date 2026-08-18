@@ -60,7 +60,7 @@ const app = createApp(options);
 
 ### `MeshConfig`
 
-`{ secret?, teapots?, timeoutMs?, heartbeatMs? }` — `teapots` is `{ url, secret }[]`; `timeoutMs` bounds an RPC (default 30s, → 504), `heartbeatMs` is the ping gap that detects a half-open link (default 15s, → 503). See [Mesh](/docs/guides/mesh/).
+`{ secret?, teapots?, timeoutMs?, heartbeatMs?, reconnect?, onManifestChange? }` — `teapots` is `{ url, secret }[]`; `timeoutMs` bounds an RPC (default 30s, → 504), `heartbeatMs` is the ping gap that detects a half-open link (default 15s, → 503). `reconnect` is `boolean | { initialDelayMs?, maxDelayMs? }` (default on; 500ms doubling to 30s with jitter) and `onManifestChange` is `'refuse'` — the default, and the only policy today. See [Mesh](/docs/guides/mesh/).
 
 ## The `App`
 

@@ -132,7 +132,42 @@ mesh: { teapots: [...], heartbeatMs: 5000 }   // notice sooner, chatter more
 
 Ping and pong are ordinary mesh frames rather than WebSocket protocol pings, because the platform `WebSocket` on Deno and Bun does not expose `ws.ping()` — a protocol-level heartbeat could not work on every runtime mesh supports.
 
-**An app-scope export survives its teapot.** It is resolved once and memoised, so a provider keeps answering from cache after the link drops — with a value that can go stale. Reconnect reconciliation is a known gap.
+## Reconnecting
+
+A teacup reconnects to a teapot that comes back, with exponential backoff and jitter — 500 ms doubling to a 30 s ceiling. The jitter matters when several teacups went down together: without it they return in lockstep and stampede the teapot the moment it answers.
+
+```typescript
+mesh: { teapots: [...], reconnect: { initialDelayMs: 500, maxDelayMs: 30_000 } }
+mesh: { teapots: [...], reconnect: false }   // fail once and stay down
+```
+
+While a link is down its RPCs answer **503 immediately**, and a successful reconnect **re-registers that teapot's app-scope bindings** — so a provider that was resolved once at boot re-runs its RPC on the next resolve instead of answering from a cache the teapot no longer stands behind.
+
+`app.close()` is terminal for a link: one the application hung up on never reconnects. Otherwise closing an app would leave a process that cannot exit.
+
+**Reconnection is not failover.** It returns to the *same* teapot. Switching to a different one exporting the same thing needs load balancing, which is not built.
+
+### A returning manifest that no longer backs the graph
+
+The graph was validated at boot against the manifest the teapot announced then, and it is already serving requests. So if a teapot comes back exporting *less* — a token gone, a route withdrawn — the connection is **refused** rather than adopted:
+
+```
+mesh: refusing to reconnect to ws://a/__mesh__/control — its manifest no longer exports
+app-scope 'billing', which the graph was validated against at boot. Retrying in case
+this is a partial deploy.
+```
+
+The link keeps retrying, because a rollback or a half-finished deploy can still restore it, and the refusal is logged once per distinct manifest rather than once per attempt. Serving against a manifest that no longer backs the graph would surface as a 500 that looks like your code.
+
+Extra exports are the other direction and are simply **ignored**: the graph is fixed at boot, so new tokens are not spliced into a running app.
+
+This is a named policy rather than implicit behaviour:
+
+```typescript
+mesh: { teapots: [...], onManifestChange: 'refuse' }   // the default, and the only one today
+```
+
+A future release may add `'reconcile'`, which rebuilds the graph instead of refusing. Naming the policy now means that arrives as an addition rather than as a change to what the default means — which matters when the two ends are separate processes on separate deploy cadences.
 
 ## Protocol version
 
@@ -141,5 +176,5 @@ Peers are separate processes on separate deploy cadences, so the wire is version
 Bump the version and old peers refuse the connection loudly instead of misreading a frame.
 
 :::note[Skeleton limitations (by design)]
-No discovery, load-balancing, or failover yet; app-scope remote values are not reconciled on reconnect; the request envelope omits `req.url`.
+No discovery, load-balancing, or failover yet. A teapot that is down when a teacup *boots* still fails that boot — reconnection covers links that connected at least once. A returning manifest is refused rather than reconciled, and extra exports in it are not spliced into the running graph. The request envelope omits `req.url`.
 :::
