@@ -88,6 +88,43 @@ Write those two lines and your code works against either kind of app without kno
 
 The dev routes (`/__graph__`, `/__openapi__`) need none of this: a request boots the app before the route runs.
 
+## What can cross: data, never behaviour
+
+The wire is JSON, so a mesh export carries **values**, not handles.
+
+```typescript
+@Provider({ provides: 'db', export: true })
+class Db { provide() { return { db: new Pool() }; } }   // ✗ refused
+```
+
+A `Pool` has methods and private state, and JSON keeps neither. Export what the handle *produces*
+instead:
+
+```typescript
+@Step({ provides: 'customer', needs: ['db'], export: true })
+class Customer {
+  run(ctx) { return { customer: this.db.find(ctx.headers['x-customer']) }; }   // ✓ data
+}
+```
+
+The teapot refuses an export it cannot transport, on the side that still holds the real value, and
+names what sat where:
+
+```
+mesh cannot transport 'db': result.db is a Pool instance. The wire is JSON, so a mesh
+export carries data, never behaviour — export what the handle produces rather than the handle.
+```
+
+It is an allowlist: primitives, plain objects and arrays. **`Date` is refused too**, because it would
+arrive as a string rather than the type you declared — the same silent difference in a smaller
+costume. Send an ISO string or a number and let the far side decide what it is.
+
+:::caution[Before this check existed]
+An export of a handle answered **HTTP 200 with `{}`**. It passed every `if (db)`, had no methods, and
+failed as `db.query is not a function` somewhere else entirely. If you have a teapot exporting
+something with behaviour, it has never worked — it has been failing at the call site.
+:::
+
 ## Buffered routes only
 
 Mesh proxies **buffered** endpoints. `@Sse`, `@Stream` and `@Ws` routes are not exportable: a remote route is registered as `transport: 'buffer'`, and a handler that returns an `AsyncIterable` over a mesh call fails with `cannot proxy a streaming route`. Streams are a live socket between client and server; there is no meaningful way to relay one through an RPC hop today.
@@ -168,6 +205,21 @@ mesh: { teapots: [...], onManifestChange: 'refuse' }   // the default, and the o
 ```
 
 A future release may add `'reconcile'`, which rebuilds the graph instead of refusing. Naming the policy now means that arrives as an addition rather than as a change to what the default means — which matters when the two ends are separate processes on separate deploy cadences.
+
+## When a teapot is not there yet
+
+A teapot that is thirty seconds behind and a teapot that does not exist look identical for the first thirty seconds, and only one of them should stop a deploy. `bootTimeoutMs` is the grace for the first:
+
+```typescript
+mesh: { teapots: [...], bootTimeoutMs: 30_000 }   // the default is timeoutMs
+mesh: { teapots: [...], bootTimeoutMs: 0 }        // one attempt, no grace
+```
+
+Within that budget the connection is retried with backoff. When it passes, **the boot still fails** — and that is deliberate. A provider the graph depends on is not optional, so booting without it would only move the failure to the first request, where it is a caller's 503 instead of your deploy's error.
+
+**A refusal is not retried.** A wrong secret or a protocol-version mismatch is the teapot's decision and will be the same decision in thirty seconds, so it fails at once rather than spending the whole budget to reach an identical error. The two are told apart by whether the socket ever opened: a peer that accepted the connection and then hung up rejected you on purpose, while one that never accepted it may simply not be listening yet.
+
+Every retry is logged *and* emitted as `mesh:boot:retry`, so a slow boot is visible to whatever collects [lifecycle events](/docs/guides/observability/) and not only to whoever happens to be watching a terminal. It is kept separate from `mesh:disconnect`, which means a link that was up and went away — this one never came up.
 
 ## A request keeps its identity across the hop
 
