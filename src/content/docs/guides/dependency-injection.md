@@ -190,3 +190,5 @@ receive `undefined`. Boot fails loudly, so you never serve `undefined`.
   [decorator reference](/docs/reference/decorators/).
 - Coerce and validate injected values with Standard Schema: [Validation](/docs/guides/validation/).
 - Declare `@Sse` and return an `AsyncIterable` to push data over time: [Streaming](/docs/guides/streaming/).
+- Wrap a flaky upstream in a provider instead of a retry scattered through handlers:
+  [Circuit breakers](/docs/guides/circuit-breaker/).
