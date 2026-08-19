@@ -7,6 +7,10 @@ description: "Scaffold, run, and generate green-tea apps from a single native bi
 
 That is deliberate: green-tea runs on Node, Deno, Bun, and the edge, so its tool shouldn't be bound to one of them.
 
+What it scaffolds is an ordinary green-tea application — nothing here is required to use the
+framework, and nothing it generates is CLI-specific. If you would rather write the files yourself,
+[Getting started](/docs/getting-started/) builds the same thing by hand.
+
 ## Install
 
 ```bash

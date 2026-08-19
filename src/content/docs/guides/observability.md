@@ -10,6 +10,11 @@ stream — not three features, which is why they are one design.
 The rule that shapes all of it: core has one runtime dependency, `reflect-metadata`, and keeps it.
 Nothing here imports an exporter.
 
+This is the runtime half of a pair. [Graph introspection](/docs/guides/introspection/) answers *what
+will run* for a route, before a request exists; the event stream answers *what did run*, for one
+request that happened. A chain from `explain()` that does not match the events you observe is the
+gap worth looking at.
+
 ## Correlation
 
 Every request gets an id. Every event it causes carries that id.
@@ -147,6 +152,12 @@ import { withConsoleFallback } from '@green-tea/core';
 
 const app = createApp({ modules: [AppModule], logger: withConsoleFallback(myLogger) });
 ```
+
+## Related
+
+- [Graph introspection](/docs/guides/introspection/) — the same pipeline, read before it runs.
+- [Errors](/docs/guides/errors/) — what a thrown error becomes on the wire, and in the stream.
+- [Testing](/docs/guides/testing/) — asserting on events instead of on log output.
 
 ## Metrics and tracing
 
