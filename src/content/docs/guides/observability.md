@@ -47,6 +47,57 @@ so the far side's events join the same trace instead of starting a second invest
 metrics consumer that labels a counter with the concrete path gets one label per distinct URL, and
 unbounded label cardinality takes down the metrics backend rather than the application.
 
+## Reaching the bus
+
+Three doors, and which one you want depends on what you have.
+
+```ts
+app.bus.on('request:end', (e) => count(e.route));            // you own the app
+```
+
+```ts
+const metrics: Plugin = (api) => {                            // you are extending someone's app
+  api.bus.on('request:end', (e) => count(e.route));
+  api.onShutdown(() => flush());
+};
+```
+
+```ts
+@Provider({ provides: 'collector', needs: ['events'] })       // you are inside the graph
+class Collector {
+  #off?: () => void;
+  provide(ctx: { events: Events }) {
+    this.#off = ctx.events.on('request:end', (e) => count(e.route));
+    return { collector: registry };
+  }
+  dispose() { this.#off?.(); }
+}
+```
+
+**A plugin is the right home for observation**, and the reason is the pairing: `bus.on` arrives
+next to `onShutdown`, so whatever it subscribes to it can also release. `@needs('events')` exists
+for the case where you are already a node and reaching for a plugin would be a detour — it gives
+you the subscribe half alone, so `on()` hands back its own unsubscribe and a provider is expected
+to call it in `dispose()`.
+
+:::caution[Subscribe once, not per request]
+A `@Provider` runs once, so subscribing there is fine. A **`@Step` runs on every request**, and one
+that calls `on()` adds a listener each time — an unbounded leak that looks exactly like using any
+other injected dependency. If a step is where you noticed you needed events, a plugin is what you
+actually wanted.
+:::
+
+### `emit` is nobody's
+
+`app.bus` carries `emit` because the application that owns the app owns its event stream. Nothing
+else does: a plugin gets `{ on }`, `@needs('events')` gets `{ on }`, and `@needs('bus')` fails at
+boot rather than resolving.
+
+That is not an oversight to be fixed later. A node that could emit could forge any lifecycle event,
+and an observation channel anything can write to is not one — the numbers coming off it stop being
+evidence. `bus` is also a reserved token name, so nothing you declare can quietly become what
+`@needs('bus')` resolves to.
+
 ## The events
 
 | Event | When |
@@ -142,6 +193,8 @@ Everything above works untyped; these exist for when you want the types written 
 | `LifecycleEvent` | the union of every event name in the table above |
 | `EventPayload` | the shape a subscriber receives |
 | `Correlation` | the request-identifying subset spread into each event |
+| `Events` | the read-only `{ on }` slice `@needs('events')` provides |
+| `UNMATCHED_ROUTE` | the `route` value carried when nothing matched — compare against this instead of hardcoding `'<unmatched>'` |
 
 `withConsoleFallback` is worth knowing about if you pass your own logger. A logger that throws while
 reporting a failure is the worst moment to lose output, and core cannot catch that for you without
@@ -166,6 +219,41 @@ above from outside:
 
 ```ts
 app.bus.on('request:end', (e) => histogram.observe(e.durationMs, { route: e.route, status: e.status }));
+```
+
+### Count `request:end`, and nothing else
+
+One request that throws emits **three** events — `request:start`, `request:failed`, `request:end` —
+all carrying the same `requestId`. A 404 emits two: `route:unmatched` and the `request:end` that
+follows. The first exporter anyone writes counts the failure twice, and it fails silently: the
+metrics simply lie.
+
+| Event | What it means | What to build on it |
+|---|---|---|
+| `request:end` | terminal and universal, for every request shape, and the only one carrying the status the client received | the request counter and the latency histogram |
+| `request:failed` | *handler code threw* — which no status expresses, since a rendered `422` is also a throw | a separate error counter |
+| `route:unmatched` | *no route ran*, covering 404 and 405 | a separate counter, if you want one |
+
+`request:failed` and `route:unmatched` are **additional** to `request:end`, not alternatives to it.
+
+`route:unmatched` is also not a synonym for failure: a file served by `createApp({ static })`
+matched no route either, and answers `200`. Read the status from `request:end`, like everything
+else.
+
+### Label on `route`, never on `name`
+
+`name` is for a human reading a log line, and on the request events it carries the path that
+arrived. That is fine in a log and disastrous as a metric label: a matched path is bounded by your
+route table, an **unmatched** one is bounded by nothing at all, and a scanner walking `/aaa`,
+`/aab`, `/aac` becomes one label per distinct URL — a memory leak with a metrics backend attached.
+
+`route` is bounded by construction. When nothing matched it is `'<unmatched>'`, exported as
+`UNMATCHED_ROUTE`, so every path that was never a route collapses into one series instead of a
+fallback you have to invent.
+
+```ts
+app.bus.on('request:end', (e) => counter.inc({ route: e.route, status: e.status }));  // bounded
+app.bus.on('request:end', (e) => counter.inc({ route: e.name }));                     // do not
 ```
 
 Per-step timings are already on the events, so a per-node timing breakdown needs no extra
