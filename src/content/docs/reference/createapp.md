@@ -41,13 +41,13 @@ const app = createApp(options);
 |---|---|
 | `maxBodyBytes` | `1_000_000` (→ `413` when exceeded) |
 | `maxConnections` | `1000` (Node only; `<= 0` means unlimited) |
-| `maxConcurrentRequests` | unlimited by default; excess in-flight requests → `503` with `Retry-After: 1` |
+| `maxConcurrentRequests` | unlimited (`<= 0` also means unlimited); bounds concurrently executing handlers, and a request above that ceiling → `503` with `Retry-After: 1` |
 | `requestTimeoutMs` | `30_000` |
 | `headersTimeoutMs` | `10_000` |
 | `keepAliveTimeoutMs` | `5_000` |
 | `maxParts` | `1000` (multipart) |
 
-`maxConcurrentRequests` is enforced before request-body acquisition in both the Node and Fetch paths, so it applies across Node, Deno, Bun, and edge. Long-lived streams release their slot once request handling returns, and WebSocket upgrades are outside this budget.
+`maxConcurrentRequests` is enforced before request-body acquisition in both the Node and Fetch paths, so it applies across Node, Deno, Bun, and edge — as a budget per server or Fetch adapter instance, not one ceiling shared by the app ([runtimes](/docs/guides/runtimes/)). Long-lived streams release their slot once request handling returns, and WebSocket upgrades are outside this budget.
 
 ### `TlsOptions`
 
