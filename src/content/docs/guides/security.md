@@ -51,6 +51,22 @@ route or the router's automatic `204` + `Allow` response.
 - With `credentials: true`, the server **never** sends `Access-Control-Allow-Origin: *` — it
   echoes the concrete allowed origin (or blocks the request).
 
+### When `origins` is a predicate
+
+A predicate is the reason the option takes a function at all: the shapes it exists for are lookups —
+an allowlist in Redis, a tenant query, a regex over a parsed URL. Two things are worth knowing before
+you put I/O in one.
+
+**It is consulted once per request.** Once for a normal request, once for a preflight, and not at all
+when the request carries no `Origin` header — the predicate is only reached when there is an origin
+to judge. You can put a round-trip in it without it being charged twice.
+
+**A predicate that throws denies the origin.** The failure is logged and the request is answered
+without CORS headers, so the browser blocks it. It is not a 500 and it is not an open door: a lookup
+that failed has not said yes, and a backing store being briefly unavailable must never widen an
+allowlist. Watch the logs for it — from the outside, a broken lookup and a genuinely disallowed
+origin look the same to the caller, which is the price of failing closed.
+
 :::caution[Reflect-any foot-gun]
 `origins: '*'` together with `credentials: true` reflects *any* origin with credentials
 attached. Only combine them if you truly intend an open credentialed API; prefer an explicit

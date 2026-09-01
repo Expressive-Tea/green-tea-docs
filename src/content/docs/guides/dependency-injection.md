@@ -102,6 +102,40 @@ and an app that wants neither can pass `hooks: [{ onShutdown }]` to `createApp`.
 one registry with one order and one failure policy. None of it runs on
 [the edge](/docs/guides/runtimes/).
 
+## Who calls `close()`
+
+Everything above runs from `close()`, and something has to call it. That part is not optional: a
+container `SIGKILL`ed after its grace period skips every `dispose()` the registry so carefully
+ordered, and reports nothing on the way out. The failure is silent, which is what makes it worth a
+heading.
+
+You have both options, and neither is a workaround for the other.
+
+**Write the handler yourself** and keep the control — when the process exits is the application's
+call, and there are apps that want to decide it:
+
+```typescript
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, () => void app.close().then(() => process.exit(0)));
+}
+```
+
+**Or hand it over**, and the framework registers `SIGINT`/`SIGTERM` to close and exit for you:
+
+```typescript
+createApp({ modules: [ApiModule], handleSignals: true });
+```
+
+Off by default on purpose — a library that installs process-wide handlers behind your back is worse
+than one that installs none. Turned on, it also absorbs the last per-runtime difference an app
+otherwise carries: `process.on` on Node and Bun, `Deno.addSignalListener` on Deno, and the matching
+`exit` for each. You declare it once on `createApp`, and whichever boot call you use — `listen()`,
+`serveDeno()` or `serveBun()` — wires it to the closer that drains *that* server.
+
+`close()` unregisters the handlers, so a **second** signal falls through to the platform default and
+ends the process at once. Ctrl-C twice is the way out of a teardown that is stuck; once is the way to
+let it finish.
+
 ## `@Provider` — app-scope, memoized
 
 A provider produces a value once, when the app boots, and reuses it for every request. Its

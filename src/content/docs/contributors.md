@@ -7,6 +7,23 @@ green-tea is one person's spare-time project that other people have started ship
 names them and what they built, because "thanks to our contributors" is worth nothing next to a
 sentence someone can point at.
 
+## In 26.9.0-beta.1
+
+**[@hgshreyas](https://github.com/hgshreyas)** — [#23](https://github.com/Expressive-Tea/green-tea/pull/23),
+a concurrency ceiling that works on all four runtimes rather than only Node. `limits.maxConnections`
+could cap sockets but not work — a thousand cheap keep-alive connections and a thousand expensive
+in-flight handlers are the same number to it — and it existed only on the `listen()` path.
+`limits.maxConcurrentRequests` counts executing handlers instead, per server and per Fetch adapter,
+and sheds with `503` + `Retry-After` rather than queueing.
+
+The interesting part is what it deliberately does *not* count: a returned stream releases its slot
+when the handler returns, not when the connection closes, so an SSE route does not sit on a budget
+slot for hours. A follow-up in the same branch made a dropped connection on Node log a warning
+instead of vanishing silently.
+
+It arrived with [its own documentation pull request](https://github.com/Expressive-Tea/green-tea-docs/pull/8),
+unprompted, which is the part worth naming.
+
 ## In 26.8.0-beta.1
 
 **[@hgshreyas](https://github.com/hgshreyas)** — [#16](https://github.com/Expressive-Tea/green-tea/pull/16),
@@ -28,10 +45,10 @@ introduced.
 ## Also in flight
 
 [@hgshreyas](https://github.com/hgshreyas) is working on
-[#17](https://github.com/Expressive-Tea/green-tea/issues/17) and
-[#21](https://github.com/Expressive-Tea/green-tea/issues/21) — making a hit connection cap answer
-the client instead of dropping the socket silently, and a concurrency ceiling that works across all
-four runtimes rather than only Node.
+[#17](https://github.com/Expressive-Tea/green-tea/issues/17) — making a hit connection cap answer the
+client instead of dropping the socket silently. The warning that shipped above is a step toward it,
+not the whole thing: an operator can now see the drop, but the client still gets a closed socket
+rather than a response.
 
 ## Contributing
 
