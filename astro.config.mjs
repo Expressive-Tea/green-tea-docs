@@ -9,7 +9,7 @@ import starlight from '@astrojs/starlight';
  * not. It is shown on every page because a reader arriving from a search result has no other way
  * to tell whether what they are reading matches what they installed.
  */
-export const documentsCoreVersion = '26.8.0-beta.1';
+export const documentsCoreVersion = '26.9.0-beta.1';
 
 // Docs site for @green-tea/core. Content lives in src/content/docs/**.
 export default defineConfig({

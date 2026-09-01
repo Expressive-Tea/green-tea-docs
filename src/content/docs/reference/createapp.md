@@ -31,6 +31,7 @@ const app = createApp(options);
 | `logRequests` | `boolean` | `false` | log one line per completed request and per failure; a removable Bus subscriber, not a middleware ([observability](/docs/guides/observability/)) |
 | `shutdownTimeoutMs` | `number` | `10_000` | how long `close()` gives in-flight work before forcing the rest shut; `close({ timeoutMs })` still wins per call. Set it here when `close()` is reached from a signal handler or shutdown hook you do not own ([runtimes](/docs/guides/runtimes/)) |
 | `teardownTimeoutMs` | `number` | — | milliseconds **reserved out of** `shutdownTimeoutMs` for teardown, so a slow drain cannot leave a connection unclosed. Unset, the drain may use the whole budget and teardown takes what is left. Larger than `shutdownTimeoutMs` throws at boot ([teardown](/docs/guides/dependency-injection/#releasing-what-a-provider-opened)) |
+| `handleSignals` | `boolean` | `false` | register `SIGINT`/`SIGTERM` to run `close()` and exit, using each runtime's own API ([teardown](/docs/guides/dependency-injection/#who-calls-close)) |
 | `mesh` | `MeshConfig` | — | distributed DI — **requires `experimental: true`** ([mesh](/docs/guides/mesh/)) |
 | `experimental` | `boolean` | `false` | opt in to alpha features (currently gates `mesh`) |
 | `warnGraphDepth` | `number \| false` | `20` | warn when one route resolves to more than this many steps; `false` disables the design warning |

@@ -64,5 +64,29 @@ const app = createApp({
 `onError` intercepts **every** HTTP error response — handler/step throws, a `404` for an unmatched route, `405`, a `413` (body too large), and a `400` (malformed body, repeated slash, or malformed path encoding) — so your error surface is consistent across the whole app. HEAD error responses keep the same status and headers but suppress the body. Streaming and WebSocket errors are out of scope (they surface as an error frame or a WebSocket close code, not a response body).
 
 :::note
-Errors are also observable without changing the response: subscribe to `request:step:error` (and `stream:error`) on [`app.bus`](/docs/guides/plugins/) to log or trace them.
+Errors are also observable without changing the response: subscribe to `request:step:error` (and `stream:error`) on [`app.bus`](/docs/guides/observability/#reaching-the-bus) to log or trace them.
 :::
+
+### If your renderer throws
+
+It falls back to the built-in JSON rendering, and the failure is logged separately, naming both
+errors — the one the request suffered and the one your renderer suffered producing a response for
+it.
+
+That fallback matters more than it looks, because of *when* `onError` runs. It only runs once
+something has already gone wrong, so a renderer that throws means the error happened, the code you
+wrote to report it failed, and the answer to the request is now in question. The original error
+still gets its response.
+
+It is worth knowing what makes a renderer throw, since none of these look risky while you are
+writing them:
+
+```ts
+onError(error, req) {
+  const type = req.headers.accept.split(',')[0];  // no Accept header → throws
+  ...
+}
+```
+
+`onError` also renders the `404`, so a request to a path you never declared reaches it too — with
+whatever headers the caller felt like sending.

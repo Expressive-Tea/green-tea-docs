@@ -57,6 +57,21 @@ await server.close({ timeoutMs: 5_000 });
 plugin's `onShutdown` and an app's `hooks` behave identically on Node, Deno and Bun — one call is
 enough, because `serveDeno()`/`serveBun()`'s `close()` drains the connections and then the app.
 
+**Reaching that `close()` from a signal is the one place the runtimes still spell things
+differently** — `process.on` and `process.exit` on Node and Bun, `Deno.addSignalListener` and
+`Deno.exit` on Deno. Write it yourself and your three entrypoints stop being identical for the sake
+of one block. Or let the framework absorb it, which is what the option is for:
+
+```ts
+createApp({ modules: [App], handleSignals: true });   // same line on all three
+```
+
+Off by default, because when the process exits is the application's call and a library has no
+business deciding it behind your back. Declared once on `createApp`, and whichever boot call you use
+attaches it to the closer that drains *that* server — so on Deno and Bun it is the server's
+`close()`, not the app's, that the signal reaches. See
+[who calls `close()`](/docs/guides/dependency-injection/#who-calls-close).
+
 On Cloudflare Workers there is nothing to close: `edgeHandler` is a handler, not a server, and the
 platform owns the lifecycle. **Teardown therefore never runs on the edge, and nothing can make it** —
 an isolate is discarded rather than closed, so there is no shutdown to intercept. A provider or

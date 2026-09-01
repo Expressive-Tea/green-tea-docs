@@ -44,7 +44,7 @@ Deployment is deliberately manual — cPanel has no API here, and a docs site do
 enough to justify pretending otherwise. CI produces the artifact; a person uploads it.
 
 **This repository's version is the `@green-tea/core` release it documents**, not a version of its
-own. `26.8.0-beta.1` here means *these pages describe core 26.8.0-beta.1* — so cutting a docs release
+own. `26.9.0-beta.1` here means *these pages describe core 26.9.0-beta.1* — so cutting a docs release
 is a claim that everything in that core release is documented, and the two move together.
 
 Three places have to agree before a release is allowed: the git tag, `package.json`, and the version
@@ -53,11 +53,11 @@ the site prints in a banner on every page (`documentsCoreVersion` in `astro.conf
 
 ```bash
 # after bumping package.json and documentsCoreVersion to match the core release
-git tag v26.8.0-beta.1 && git push origin v26.8.0-beta.1
+git tag v26.9.0-beta.1 && git push origin v26.9.0-beta.1
 ```
 
 That runs `.github/workflows/release.yml`, which verifies the three agree, builds the site, and attaches
-`green-tea-docs-v26.8.0-beta.1.tar.gz` to a GitHub release. Download it, then unpack it into the `/docs`
+`green-tea-docs-v26.9.0-beta.1.tar.gz` to a GitHub release. Download it, then unpack it into the `/docs`
 directory of the cPanel docroot.
 
 The archive is taken from *inside* `dist/`, so it unpacks as the directory's contents rather than as

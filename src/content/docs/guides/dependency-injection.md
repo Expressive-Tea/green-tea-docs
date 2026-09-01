@@ -102,6 +102,40 @@ and an app that wants neither can pass `hooks: [{ onShutdown }]` to `createApp`.
 one registry with one order and one failure policy. None of it runs on
 [the edge](/docs/guides/runtimes/).
 
+## Who calls `close()`
+
+Everything above runs from `close()`, and something has to call it. That part is not optional: a
+container `SIGKILL`ed after its grace period skips every `dispose()` the registry so carefully
+ordered, and reports nothing on the way out. The failure is silent, which is what makes it worth a
+heading.
+
+You have both options, and neither is a workaround for the other.
+
+**Write the handler yourself** and keep the control — when the process exits is the application's
+call, and there are apps that want to decide it:
+
+```typescript
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, () => void app.close().then(() => process.exit(0)));
+}
+```
+
+**Or hand it over**, and the framework registers `SIGINT`/`SIGTERM` to close and exit for you:
+
+```typescript
+createApp({ modules: [ApiModule], handleSignals: true });
+```
+
+Off by default on purpose — a library that installs process-wide handlers behind your back is worse
+than one that installs none. Turned on, it also absorbs the last per-runtime difference an app
+otherwise carries: `process.on` on Node and Bun, `Deno.addSignalListener` on Deno, and the matching
+`exit` for each. You declare it once on `createApp`, and whichever boot call you use — `listen()`,
+`serveDeno()` or `serveBun()` — wires it to the closer that drains *that* server.
+
+`close()` unregisters the handlers, so a **second** signal falls through to the platform default and
+ends the process at once. Ctrl-C twice is the way out of a teardown that is stuck; once is the way to
+let it finish.
+
 ## `@Provider` — app-scope, memoized
 
 A provider produces a value once, when the app boots, and reuses it for every request. Its
@@ -181,6 +215,20 @@ The payoff of declaring dependencies is that the wiring is checked before a sing
 served. When you `@needs` a token, green-tea verifies some provider or step actually produces
 it. If nothing does, **`createApp` throws with a clear error** instead of letting your handler
 receive `undefined`. Boot fails loudly, so you never serve `undefined`.
+
+### Names the framework owns
+
+`logger`, `rooms`, `events` and `bus` are reserved. Declaring one — from a module, a plugin or a
+mesh export — fails at boot rather than overriding the framework's own.
+
+The first three are real tokens you can inject: `@needs('logger')` gets the same logger core writes
+to, `@needs('rooms')` the built-in `Rooms`, and `@needs('events')` the read-only `{ on }` slice of
+the event bus ([observability](/docs/guides/observability/#reaching-the-bus)).
+
+`bus` is reserved without being provided. The `Bus` itself is deliberately not a graph token — a
+node that could reach it could also `emit`, and an observation channel anything can write to is not
+one — so `@needs('bus')` fails at boot and tells you what to use instead. Reserving the name is what
+stops it from quietly resolving to something you happened to call `bus`.
 
 ## Where to go next
 
