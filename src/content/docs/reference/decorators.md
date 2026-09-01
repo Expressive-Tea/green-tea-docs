@@ -69,7 +69,7 @@ Method decorators on a controller. All accept `(path, opts?)` where `opts = { ex
 | Decorator | Method | Transport |
 |---|---|---|
 | `@Get` `@Head` `@Post` `@Put` `@Patch` `@Delete` `@Options` | as named | buffered response |
-| `@Sse` | GET | `text/event-stream` |
+| `@Sse` | GET | `text/event-stream` — wrap a yielded value in [`sse()`](/docs/guides/streaming/#reconnection-and-the-id-it-needs) to add `id:` / `event:` / `retry:` |
 | `@Ws` | GET | WebSocket duplex |
 | `@Stream` | GET | negotiated (SSE / ndjson / WS) |
 

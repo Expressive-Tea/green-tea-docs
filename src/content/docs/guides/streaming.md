@@ -49,6 +49,80 @@ class FeedController {
 
 `@Stream(path)` negotiates the transport by header (`Accept: text/event-stream` → SSE, `Upgrade: websocket` → WS, else ndjson chunked).
 
+### Reconnection, and the `id:` it needs
+
+`EventSource` reconnects on its own. That is the reason to pick SSE over a raw WebSocket, and it is
+also the part that quietly loses data if the server never says where the client got to.
+
+When it reconnects, the browser sends the last event id it saw as a `Last-Event-ID` request header.
+Emit ids with `sse()`, read the header back with `@header('last-event-id')`, and the reconnect
+resumes instead of restarting:
+
+```typescript
+import { Route, Sse, header, sse } from '@green-tea/core';
+
+@Route('/feed')
+class FeedController {
+  @Sse('/rows')
+  rows(@header('last-event-id') from: string) {
+    return (async function* () {
+      for await (const row of readRows({ after: from })) yield sse(row, { id: row.seq });
+    })();
+  }
+}
+//   id: 41
+//   data: {"seq":"41","body":"…"}
+```
+
+`sse(data, fields)` takes three optional fields:
+
+| Field | Wire | What it does |
+|---|---|---|
+| `id` | `id:` | the marker the browser echoes back as `Last-Event-ID` |
+| `event` | `event:` | a named event — delivered to `addEventListener(name)` instead of `onmessage` |
+| `retry` | `retry:` | reconnection delay in whole milliseconds; applies to the connection, not the event |
+
+Yielding a plain value still writes a bare `data:` frame, exactly as before. On an `ndjson` route —
+or a `@Stream` route where the client chose ndjson — the payload is unwrapped and the fields are
+dropped, because NDJSON has no frame to carry them.
+
+:::caution[An id built from a request must not contain a newline]
+The SSE format is line-based, so a newline inside `id` would end the field and let the rest of the
+value be read as further SSE fields — which is how a page token or cursor taken from a request turns
+into arbitrary events in somebody else's stream. `sse()` throws rather than trimming it: an id
+silently shortened is echoed back as `Last-Event-ID` and resumes from the wrong place, which is the
+invisible failure the whole mechanism exists to prevent.
+:::
+
+### green-tea does not keep your events
+
+There is no buffer, no retention window and no replay. green-tea carries the marker in both
+directions and stores nothing; **what a gap means is your handler's decision**, because only your
+source knows.
+
+That is a deliberate line, not a missing feature. Replaying a gap would need a stream identity that
+survives a disconnect — and there is none, since every reconnect is a new request that builds a new
+iterable — plus a retention policy no default can get right (a ticker at 1000/s and an audit log at
+one a minute want incompatible answers, and guessing too small loses data silently) and an
+in-process buffer that would resume from nothing the moment a reconnect lands on your second
+instance.
+
+So decide which kind of source you have, and say so:
+
+- **Resumable** — a paged log, a database cursor, a Kafka offset. Emit an `id` and re-read from it.
+  This is usually cheaper and more correct than any buffer the framework could keep for you.
+- **Not resumable** — a live sensor, a price ticker, a presence feed. There is no past worth
+  delivering; the client reconnects and picks up the next value. Emit no `id`, and write that in
+  your own API docs so a consumer does not assume otherwise.
+
+### When a stream fails part-way
+
+A source that throws mid-stream is reported the same way on every runtime: the framework writes the
+encoder's error frame — `event: error` with the message, for SSE — and then closes the response
+cleanly, and emits `stream:error` on the [bus](/docs/guides/observability/). A consumer that received
+an `error` event knows what happened; a connection that merely dropped tells it nothing, which is why
+the frame comes first.
+
 ## Streaming — WebSocket duplex
 
 A WS handler receives the **inbound** channel and returns the **outbound** channel — a step that consumes one channel and produces another.
