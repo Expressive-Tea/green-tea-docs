@@ -107,10 +107,35 @@ evidence. `bus` is also a reserved token name, so nothing you declare can quietl
 | `route:matched` / `route:unmatched` | a route matched, or none did (covers **404 and 405**) — also additional |
 | `request:step:enter` / `:leave` / `:error` | one step of the pipeline |
 | `boot:provider:start` / `:ok` / `:fail` | a provider booting |
-| `stream:open` / `:close` / `:error` | an SSE, ndjson or WebSocket connection |
+| `stream:open` / `:close` / `:error` | an SSE, ndjson or WebSocket connection — see [below](#a-stream-is-not-a-request) |
 | `mesh:connect` / `:disconnect` / `:rpc:error` | mesh links |
 | `mesh:boot:retry` | a teapot that has not come up yet, still inside the boot grace ([mesh](/docs/guides/mesh/)) |
 | `plugin:mounted` | a plugin registered |
+
+### A stream is not a request
+
+`request:end` fires when the **handler returns**, not when a stream it produced finishes. A route
+that returns an `AsyncIterable` is done in milliseconds while its connection may live for hours, and
+putting both in one latency distribution ruins both numbers.
+
+So streams get their own three events, and they carry the same `requestId` as the request that
+opened them — which is what lets you join the two rather than watch them as unrelated feeds:
+
+```ts
+app.bus.on('stream:open',  (e) => open.set(e.requestId!, { route: e.route, at: Date.now() }));
+app.bus.on('stream:close', (e) => open.delete(e.requestId!));
+```
+
+`traceId` comes along too, so a connection reaches your tracing backend under the same trace as the
+request that opened it. Label on `route`, the same rule as everywhere else on this page.
+
+A WebSocket upgrade correlates the same way — it is an HTTP request with headers like any other, so
+an `x-request-id` from your gateway is adopted rather than replaced, and its events carry
+`transport: 'ws'`.
+
+All three fire on every runtime. If you had a stream gauge that read zero anywhere but Node, that
+was a bug on the Fetch adapter and it is fixed — the events, and the `error` frame written to the
+client when a source throws, are now identical on Node, Deno, Bun and workerd.
 
 ### `request:start` and `request:end` always come in pairs
 

@@ -79,7 +79,9 @@ class Db {
 
 **Teardown runs in reverse boot order.** Providers boot in dependency order, so they close in the
 opposite one: a `cache` that needs `db` shuts down before the `db` it is still holding. You never
-declare that order — it is the same graph that decided boot order, read backwards.
+declare that order — it is the same graph that decided boot order, read backwards. That stays exact
+even though independent providers [boot together](#independent-providers-boot-together): teardown
+follows the order the graph derived, not the order they happened to finish in.
 
 A provider that *failed* to boot is never disposed: nothing it might close was ever opened. A
 `dispose()` that throws is logged and the rest still run, because one broken teardown must not
@@ -187,6 +189,35 @@ parameter is a dependency edge exactly like a step's `needs`.
 
 Because the graph is explicit, **each route runs only the transitive closure of its handler's
 `@needs`** — nothing else.
+
+### Independent providers boot together
+
+The graph knows which providers cannot constrain each other, so boot does not walk them one at a
+time. Providers are grouped into dependency levels and each level boots concurrently: your app pays
+its **longest chain**, not the sum of everything it declared.
+
+```
+three providers, no edges between them, 200ms of work each
+
+  one at a time     616ms      ← the sum
+  by level          210ms      ← the critical path
+```
+
+With real providers those are a pool handshake, a schema check and a warm-up query that have nothing
+to say to each other. Nothing you wrote changes: a provider that `needs` another still waits for it,
+and the ordering is the same one the topological sort always produced.
+
+This is the second thing you get back for declaring `needs` / `provides` instead of ordering calls by
+hand — pruning is the first. Neither is available to a middleware chain, because nothing in
+`app.use(...)` declares what is independent.
+
+Two things worth knowing:
+
+- On the [bus](/docs/guides/observability/), `boot:provider:start` no longer strictly alternates with
+  `:ok` — a level emits its starts together and then its results.
+- A **required** provider that fails no longer stops its independent siblings from starting; they
+  were already in flight. Whatever they opened is registered for teardown before the boot is
+  aborted, so it can still be closed.
 
 :::caution[Per-route execution]
 A route that doesn't `@needs('user')` does **not** run the `Authenticate` step. A cross-cutting

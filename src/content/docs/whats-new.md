@@ -193,6 +193,103 @@ rename it — this is a change that can fail an app that boots today.
 
 → [Reaching the bus](/docs/guides/observability/#reaching-the-bus)
 
+## `@Sse` can tell the client where it got to
+
+`EventSource` reconnects on its own — that is the reason to choose SSE over a raw WebSocket. What
+it needs from the server is an id, and the encoder wrote exactly one field:
+
+```
+data: {"seq":41}
+```
+
+No `id:`, so the browser had nothing to send back, so every automatic reconnect rebuilt the route's
+iterable from its beginning. **Everything produced during the gap was lost and nothing on either
+side reported it** — the client saw a healthy connection and a continuous stream, and had simply
+missed events. That is worse than not reconnecting at all: a failure that announces itself gets
+handled.
+
+```ts
+@Sse('/rows')
+rows(@header('last-event-id') from: string) {
+  return (async function* () {
+    for await (const row of readRows({ after: from })) yield sse(row, { id: row.seq });
+  })();
+}
+```
+
+The other half already worked, which was worth checking before designing anything: the request
+envelope has always carried every header, so a handler could already read `Last-Event-ID`. It just
+always arrived empty. `event:` and `retry:` come along for free — named events and a tunable
+reconnect delay were both unreachable before.
+
+**green-tea stores nothing.** No buffer, no retention window, no replay, and that is a line rather
+than a gap. Replaying would need a stream identity that survives a disconnect — there is none, every
+reconnect builds a new iterable — plus a retention policy no default gets right and an in-process
+buffer that resumes from nothing the first time a reconnect lands on your second instance. What a
+gap means is your handler's call, because only your source knows: a paged log re-reads from an
+offset, a live ticker has no past worth delivering. Say which one you are in your own API docs.
+
+An `id` containing a newline throws instead of being trimmed. The format is line-based, and an id is
+exactly the value most likely to be built from a request — a cursor, a page token — so one newline
+would let a caller append fields to somebody else's stream.
+
+→ [Streaming](/docs/guides/streaming/#reconnection-and-the-id-it-needs)
+
+## Your app boots in its longest chain, not the sum of it
+
+Boot walked the dependency order one provider at a time. The graph already knew which of them
+cannot constrain each other — that is what a topological sort *is* — and flattening it into a list
+was the only thing throwing that away.
+
+```
+three providers, no edges between them, 200ms of work each
+
+  before   616ms      the sum
+  now      210ms      the critical path
+```
+
+With real providers those are a pool handshake, a schema check and a warm-up query that have nothing
+to say to each other. Nothing you wrote changes, and nothing about the derived order changes: a
+provider that `needs` another still waits for it, and a level is fully registered before the next
+one starts.
+
+This is the second thing the graph earns you, after pruning. An Express app cannot parallelize
+`app.use` safely because nothing in it declares what is independent; we have that declaration and
+were not spending it.
+
+Two things to know if you watch boot closely. `boot:provider:start` no longer strictly alternates
+with `:ok` — a level emits its starts together, then its results. And a **required** provider that
+fails no longer stops its independent siblings from starting, since they are already in flight;
+whatever they opened is registered for teardown before the boot aborts, so it can still be closed.
+Teardown itself is unchanged and still the exact reverse of boot.
+
+→ [Independent providers boot together](/docs/guides/dependency-injection/#independent-providers-boot-together)
+
+## Stream events exist on more than one runtime now
+
+`stream:open`, `stream:close` and `stream:error` were emitted by the Node adapter only. Every Fetch
+runtime — Deno, Bun, workerd, and `app.fetch()` on Node — emitted none of them, and when a source
+threw part-way it broke the response instead of writing the encoder's `error` frame.
+
+Both halves were silent. A dashboard counting `stream:error` read zero on three of the four runtimes
+while streams were failing normally, and the client got a truncated body that is indistinguishable
+from a clean end of stream. If you have a stream gauge that looked suspiciously quiet off Node, this
+is why.
+
+The Fetch path now emits all three and frames the error before closing cleanly — which is what Node
+always did, and the better answer for a client: a consumer that received an `error` event knows what
+happened, where a dropped connection tells it nothing.
+
+All three also carry the `requestId` and `traceId` of the request that opened the connection, plus a
+bounded `route`. The docs had claimed the id since the stream shipped; it was never emitted. The
+split is deliberate — `request:end` fires when the handler returns, so an hour-long SSE connection
+never lands in the same latency distribution as a 2ms reply — but it only works if the two can be
+**joined**, and without the id you could not say which request opened the connection still holding a
+slot. A WebSocket upgrade correlates itself the same way, adopting your gateway's `x-request-id`
+rather than opening a second identity, and carries `transport: 'ws'`.
+
+→ [A stream is not a request](/docs/guides/observability/#a-stream-is-not-a-request)
+
 ## Smaller, but you may be waiting for them
 
 - **A custom `@Transformer` can be typed.** `TransformerFn` was not exported, so the only way to
@@ -224,7 +321,6 @@ is settled and what still moves. The short version: the graph is the settled par
 
 The event stream's contract landed in this release, which was the last thing standing between the
 observability work and something you could build an exporter against without reading the source.
-What is still open and worth knowing about: `@Sse` ignores `Last-Event-ID`, so an `EventSource` that
-reconnects silently resumes from nothing; independent providers still boot one at a time, so an app
-pays the sum of its providers' latencies rather than its longest chain; and there is still no
-metrics package outside core, which means everyone writing an exporter writes the same eighty lines.
+Two of the three gaps named in that paragraph last release are closed above. What is still open and
+worth knowing about: there is no metrics package outside core, so everyone writing an exporter still
+writes the same eighty lines; and mesh remains alpha, with nothing moving in it this release.
