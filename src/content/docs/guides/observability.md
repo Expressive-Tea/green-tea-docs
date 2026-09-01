@@ -102,15 +102,31 @@ evidence. `bus` is also a reserved token name, so nothing you declare can quietl
 
 | Event | When |
 |---|---|
-| `request:start` / `request:end` | a request enters and leaves the handler |
-| `request:failed` | the request produced an error |
-| `route:matched` / `route:unmatched` | a route matched, or none did (covers **404 and 405**) |
+| `request:start` / `request:end` | a request enters and leaves the handler — always paired, and `request:end` is the one to count |
+| `request:failed` | *handler code threw* — **additional** to the `request:end` that follows |
+| `route:matched` / `route:unmatched` | a route matched, or none did (covers **404 and 405**) — also additional |
 | `request:step:enter` / `:leave` / `:error` | one step of the pipeline |
 | `boot:provider:start` / `:ok` / `:fail` | a provider booting |
 | `stream:open` / `:close` / `:error` | an SSE, ndjson or WebSocket connection |
 | `mesh:connect` / `:disconnect` / `:rpc:error` | mesh links |
 | `mesh:boot:retry` | a teapot that has not come up yet, still inside the boot grace ([mesh](/docs/guides/mesh/)) |
 | `plugin:mounted` | a plugin registered |
+
+### `request:start` and `request:end` always come in pairs
+
+Every `request:end` is preceded by a `request:start` carrying the same `requestId` — including a
+request shed by [`maxConcurrentRequests`](/docs/guides/runtimes/), which never reaches a route at
+all. You can open per-request state on the first and close it on the second without checking how far
+the request got.
+
+```ts
+app.bus.on('request:start', () => inFlight++);
+app.bus.on('request:end',   () => inFlight--);
+```
+
+That is the gauge this guarantee exists for. Without it, the counter would drift the first time a
+server shed a request — under load, which is when you are looking at it, and it would drift by
+producing a plausible wrong number rather than an error.
 
 ### Where a streaming request ends
 

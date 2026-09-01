@@ -216,6 +216,20 @@ served. When you `@needs` a token, green-tea verifies some provider or step actu
 it. If nothing does, **`createApp` throws with a clear error** instead of letting your handler
 receive `undefined`. Boot fails loudly, so you never serve `undefined`.
 
+### Names the framework owns
+
+`logger`, `rooms`, `events` and `bus` are reserved. Declaring one — from a module, a plugin or a
+mesh export — fails at boot rather than overriding the framework's own.
+
+The first three are real tokens you can inject: `@needs('logger')` gets the same logger core writes
+to, `@needs('rooms')` the built-in `Rooms`, and `@needs('events')` the read-only `{ on }` slice of
+the event bus ([observability](/docs/guides/observability/#reaching-the-bus)).
+
+`bus` is reserved without being provided. The `Bus` itself is deliberately not a graph token — a
+node that could reach it could also `emit`, and an observation channel anything can write to is not
+one — so `@needs('bus')` fails at boot and tells you what to use instead. Reserving the name is what
+stops it from quietly resolving to something you happened to call `bus`.
+
 ## Where to go next
 
 - New to green-tea? Start with [Getting started](/docs/getting-started/).

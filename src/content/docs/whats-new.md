@@ -7,8 +7,9 @@ These pages document **26.9.0-beta.1**. This is what changed since `26.8.0-beta.
 matters to you rather than the order it was built. The [full changelog](https://github.com/Expressive-Tea/green-tea/blob/main/CHANGELOG.md)
 has every release; this page is only the current one.
 
-Two of these are crashes. If you are on `26.8.0-beta.1` and using either a CORS predicate or the JSR
-package, read the first two sections before anything else.
+Three of these are crashes, and each one exits the process rather than answering. If you are on
+`26.8.0-beta.1` and using a CORS predicate, a custom `onError`, or the JSR package, read the first
+three sections before anything else.
 
 ## A CORS predicate that throws no longer takes the process down
 
@@ -50,6 +51,35 @@ while it sat in `node_modules`. Both blamed the runtime for a packaging problem,
 runtime you were not on — which is harder to debug than the crash, not easier.
 
 Nothing changes for npm installs; both builds behave exactly as they did.
+
+## A custom `onError` that throws no longer takes the process down
+
+Same shape as the one above, in a different callback, and easier to reach: not a cross-origin
+request but *any* request that produces an error.
+
+`createApp({ onError })` is the advertised way to render errors and it ran with no boundary around
+it. A renderer that threw exited the process. And it renders the `404` too — so an app with a custom
+renderer and no matching route was one request away from ending.
+
+It is also the worst-timed crash there was, because of *when* the renderer runs. It only runs once
+something has already gone wrong: an error occurred, the code written to report it failed, and
+instead of a degraded report the server went away.
+
+A renderer that throws now falls back to the built-in JSON rendering — which is exactly what the
+option overrides — so the original error still gets its response. The renderer's own failure is
+logged separately, naming both errors, because they are different errors and chasing the wrong one
+costs an afternoon.
+
+Worth re-reading your renderer with this in mind. None of these look risky while you write them:
+
+```ts
+onError(error, req) {
+  const type = req.headers.accept.split(',')[0];  // no Accept header → throws
+  ...
+}
+```
+
+→ [Errors](/docs/guides/errors/#if-your-renderer-throws)
 
 ## Shutdown can be the framework's job now
 
@@ -100,6 +130,69 @@ Contributed by [@hgshreyas](https://github.com/hgshreyas), documentation include
 
 → [Runtimes](/docs/guides/runtimes/) · [`RequestLimits`](/docs/reference/createapp/#requestlimits)
 
+## The lifecycle stream has a contract now
+
+The stream shipped last release and was enough to build on. What it was missing was anything saying
+how to build on it — and every mistake it invited was silent. Nothing threw, nothing logged, the
+metrics simply came out wrong.
+
+**Count `request:end`, and nothing else.** One request that throws emits three events, a 404 emits
+two, and they all share a `requestId`. The first exporter anyone writes counts failures twice.
+`request:end` is terminal, universal and the only one carrying the status the client received;
+`request:failed` means *handler code threw*, which no status expresses since a rendered `422` is
+also a throw; `route:unmatched` means *no route ran*. The last two are **additional**, not
+alternatives.
+
+**Label on `route`, never on `name`.** `name` carries the path that arrived, which is bounded by
+nothing at all — a scanner walking `/aaa`, `/aab`, `/aac` turns a counter into one series per URL,
+which is a memory leak with a metrics backend attached. `route` is bounded by construction, and an
+unmatched request now carries `'<unmatched>'` instead of nothing, exported as `UNMATCHED_ROUTE`.
+
+**`request:start` and `request:end` are guaranteed to come in pairs**, including for a request shed
+by `maxConcurrentRequests`, which never reaches a route. An in-flight gauge that counts one up and
+the other down is correct now, where before it would have drifted the first time a server shed —
+under load, which is when you are watching it.
+
+`request:failed` also carries `status` now, so an error counter can break down by status without
+joining back through `requestId`.
+
+→ [Observability](/docs/guides/observability/#count-requestend-and-nothing-else)
+
+## Subscribing from inside the graph
+
+`app.bus` was public and a plugin could subscribe, but the bus was not a graph token, so
+`@needs('bus')` failed at boot and nothing said why.
+
+```ts
+@Provider({ provides: 'collector', needs: ['events'] })
+class Collector {
+  #off?: () => void;
+  provide(ctx: { events: Events }) {
+    this.#off = ctx.events.on('request:end', (e) => count(e.route));
+    return { collector: registry };
+  }
+  dispose() { this.#off?.(); }
+}
+```
+
+`@needs('events')` reaches `{ on }` — the same narrowing plugins already get. The `Bus` itself stays
+out of the graph on purpose: a node that could reach it could also `emit`, and an observation
+channel anything can write to is not one. `@needs('bus')` now fails saying that, and pointing at
+what does work.
+
+A plugin is still the right home for observation, because it gets `on` and `onShutdown` *together*.
+This token gives the subscribe half alone — so a `@Provider` releases in `dispose()`, and a `@Step`
+should not subscribe at all, since it runs per request and would add a listener each time.
+
+:::caution[Reserved names]
+`logger`, `rooms`, `events` and `bus` are reserved. Declaring one now **fails at boot**, where
+before a provider called `logger` silently replaced the framework's own and every `@needs('logger')`
+in the app got something that was not the logger core writes to. If your app declares one of these,
+rename it — this is a change that can fail an app that boots today.
+:::
+
+→ [Reaching the bus](/docs/guides/observability/#reaching-the-bus)
+
 ## Smaller, but you may be waiting for them
 
 - **A custom `@Transformer` can be typed.** `TransformerFn` was not exported, so the only way to
@@ -112,6 +205,10 @@ Contributed by [@hgshreyas](https://github.com/hgshreyas), documentation include
   predicate with a network call in it, and running it two or three times charged your latency budget
   and your backend for an answer that had not changed in between. A predicate with a counter in it
   also stops counting double.
+- **No per-request bookkeeping when no request budget is set.** Every request registered a `close`
+  listener for `maxConcurrentRequests`, which is opt-in and unlimited by default — so most apps paid
+  a closure and an event registration per request, on the hot path, for a feature that was off.
+  Unchanged where a budget *is* configured.
 - **Hitting `maxConnections` on Node says so.** The socket was destroyed with no HTTP response and
   nothing logged, which from the outside reads like a network fault. It now logs a warning naming
   the dropped peer, rate-limited to one a minute. Also contributed by
@@ -125,7 +222,9 @@ Not a roadmap — see [Honest scope](https://github.com/Expressive-Tea/green-tea
 is settled and what still moves. The short version: the graph is the settled part, the plugin API and
 `createApp`'s options still grow, and mesh is alpha. The API freeze belongs to the release candidate.
 
-The next thing being worked on is the lifecycle event stream's contract — which events describe the
-same request, which one an exporter should count, and what is safe to use as a metric label. The
-stream shipped in `26.8.0-beta.1` and is enough to build on; what it is missing is written down
-rather than implied.
+The event stream's contract landed in this release, which was the last thing standing between the
+observability work and something you could build an exporter against without reading the source.
+What is still open and worth knowing about: `@Sse` ignores `Last-Event-ID`, so an `EventSource` that
+reconnects silently resumes from nothing; independent providers still boot one at a time, so an app
+pays the sum of its providers' latencies rather than its longest chain; and there is still no
+metrics package outside core, which means everyone writing an exporter writes the same eighty lines.
