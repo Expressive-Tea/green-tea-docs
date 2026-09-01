@@ -41,6 +41,8 @@ destroys excess sockets without sending an HTTP response. `Deno.serve` and `Bun.
 equivalent active-socket cap, so `serveDeno` and `serveBun` cannot enforce this option. Apply the
 connection limit at the deployment platform or reverse proxy on those runtimes.
 
+`limits.maxConcurrentRequests` is separate from the connection limit and applies per server or Fetch adapter instance, so an app using both `app.listen()` and `app.fetch` has two independent request budgets. It bounds concurrently executing handlers; a handler that never returns continues to hold its slot, while on Node a client disconnect releases that slot. Excess requests receive `503 Service Unavailable` with `Retry-After: 1`.
+
 **Draining belongs to whoever owns the server.** On Deno and Bun the app is served through
 `app.fetch` and never through `app.listen()`, so `app.close()` has no connections to drain — it
 warns if you passed `timeoutMs`. The server `serveDeno()` and `serveBun()` return carries the same

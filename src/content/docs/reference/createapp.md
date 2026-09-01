@@ -14,7 +14,7 @@ const app = createApp(options);
 | `modules` | `Ctor[]` | — | the `@Module` classes to wire (required) |
 | `plugins` | `Plugin[]` | `[]` | plugins, each limited to `bus.on` + `scope.add` + `onShutdown` ([plugins](/docs/guides/plugins/)) |
 | `hooks` | `Hooks[]` | `[]` | lifecycle participation without extending the graph; `{ onShutdown }` today ([teardown](/docs/guides/dependency-injection/#releasing-what-a-provider-opened)) |
-| `limits` | `RequestLimits` | see below | body-size and timeout ceilings |
+| `limits` | `RequestLimits` | see below | body-size, concurrency, and timeout ceilings |
 | `devGraph` | `boolean` | `false` | mount `GET /__graph__` ([introspection](/docs/guides/introspection/)) |
 | `devOpenapi` | `boolean` | `false` | mount `GET /__openapi__` serving the [OpenAPI](/docs/guides/openapi/) document |
 | `overrides` | `Record<string, unknown>` | — | swap any node by token ([testing](/docs/guides/testing/)) |
@@ -41,10 +41,13 @@ const app = createApp(options);
 |---|---|
 | `maxBodyBytes` | `1_000_000` (→ `413` when exceeded) |
 | `maxConnections` | `1000` (Node only; `<= 0` means unlimited) |
+| `maxConcurrentRequests` | unlimited (`<= 0` also means unlimited); bounds concurrently executing handlers, and a request above that ceiling → `503` with `Retry-After: 1` |
 | `requestTimeoutMs` | `30_000` |
 | `headersTimeoutMs` | `10_000` |
 | `keepAliveTimeoutMs` | `5_000` |
 | `maxParts` | `1000` (multipart) |
+
+`maxConcurrentRequests` is enforced before request-body acquisition in both the Node and Fetch paths, so it applies across Node, Deno, Bun, and edge — as a budget per server or Fetch adapter instance, not one ceiling shared by the app ([runtimes](/docs/guides/runtimes/)). Long-lived streams release their slot once request handling returns, and WebSocket upgrades are outside this budget.
 
 ### `TlsOptions`
 
