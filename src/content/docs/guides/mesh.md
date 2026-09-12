@@ -9,7 +9,7 @@ Mesh is **alpha** — its API and wire protocol may change between releases, and
 
 A **teacup** can depend on a token that physically lives on another node — a **teapot**. `@needs('billing')` resolves the same whether `billing` runs in this process or on a remote one. There's no gRPC layer or message-pattern DSL: there's the [graph](/docs/concepts/the-graph/), and some nodes happen to live elsewhere.
 
-Exports are opt-in (`export: true`) and the control channel is gated by a shared secret.
+Exports are opt-in (`export: true`) on **steps and routes** — a provider cannot be exported, for a reason [below](#what-can-cross-data-never-behaviour) — and the control channel is gated by a shared secret.
 
 ## What runs where
 
@@ -27,8 +27,8 @@ serveBun(teacup, { port: 3003 });    // teapots connected on the first request
 ## Node A — teapot (exposes `config`, `auth`, and a route)
 
 ```typescript
-@Provider({ provides: 'config', export: true })
-class Config { provide() { return { config: { region: 'mx', tier: 'pro' } }; } }
+@Step({ provides: 'config', needs: [], export: true })
+class Config { run() { return { config: { region: 'mx', tier: 'pro' } }; } }
 
 @Step({ provides: 'auth', needs: [], export: true })
 class Auth { run(ctx: any) { return { auth: { token: ctx.headers?.['x-token'] ?? 'anon' } }; } }
@@ -36,14 +36,14 @@ class Auth { run(ctx: any) { return { auth: { token: ctx.headers?.['x-token'] ??
 @Route('/svc')
 class Svc { @Get('/ping', { export: true }) ping() { return { pong: true }; } }
 
-@Module({ mountpoint: '/api', providers: [Config], steps: [Auth], controllers: [Svc] })
+@Module({ mountpoint: '/api', steps: [Config, Auth], controllers: [Svc] })
 class TeapotModule {}
 
 const teapot = createApp({ modules: [TeapotModule], experimental: true, mesh: { secret: 'shh' } });
 await teapot.listen(3002);
 ```
 
-## Node B — teacup (uses `config` + `auth` with no local providers)
+## Node B — teacup (uses `config` + `auth` with nothing local providing them)
 
 ```typescript
 @Route('/local')
@@ -68,10 +68,9 @@ await teacup.listen(3003);
 
 ## How it resolves
 
-`@needs('config' | 'auth')` validates at boot because the teapot announced them in its **manifest** on connect. Scope determines the RPC cost:
+`@needs('config' | 'auth')` validates at boot because the teapot announced them in its **manifest** on connect — a list of step names and a list of routes, nothing else. Every export is **request-scope**: one RPC per request, carrying the request envelope, answered by the step running on the teapot. Nothing is resolved once and cached on the teacup, so a remote export holds nothing between requests.
 
-- A **provider** export is **app-scope** — resolved once and cached.
-- A **step** export is **request-scope** — one RPC per request, carrying the request envelope.
+That is also why a **provider cannot be exported**. A provider is a factory whose value *is* the object it builds — a pool, a client, a `db` — and an object is not what a JSON wire carries. What used to cross was whatever half of it survived serialization, cached app-scope on the teacup for the life of the process, out of a cache the teapot no longer stood behind. Export a `@Step` that returns what the provider's value carried instead; the [next section](#what-can-cross-data-never-behaviour) has the shape.
 
 Remote tokens become synthetic nodes in the local graph with RPC-backed runners, so the rest of the pipeline is unchanged. For non-mesh apps `createApp` stays synchronous; a mesh app defers graph finalization until it boots — connecting to teapots is network I/O — and boots on whichever comes first: `app.fetch`, `app.upgrade` or `listen()`. Whoever triggers it, it happens once.
 
@@ -81,7 +80,7 @@ Remote tokens become synthetic nodes in the local graph with RPC-backed runners,
 
 ```typescript
 await app.ready();       // connects the teapots; a no-op on a non-mesh app
-app.graph();             // now includes the remote scopes
+app.graph();             // now includes the remote steps and routes
 ```
 
 Write those two lines and your code works against either kind of app without knowing which it got. `ready()` deliberately does **not** boot providers — resolving the graph and being ready to serve are different things, and drawing a diagram should not open your database connections. Serving (`fetch`/`upgrade`/`listen`) boots them too and shares the same memoized step, so calling both never resolves the graph twice.
@@ -94,11 +93,21 @@ The wire is JSON, so a mesh export carries **values**, not handles.
 
 ```typescript
 @Provider({ provides: 'db', export: true })
-class Db { provide() { return { db: new Pool() }; } }   // ✗ refused
+class Db { provide() { return { db: new Pool() }; } }   // ✗ does not compile, and fails the boot
 ```
 
-A `Pool` has methods and private state, and JSON keeps neither. Export what the handle *produces*
-instead:
+A `Pool` has methods and private state, and JSON keeps neither — and a provider's value is always
+that kind of thing, which is why `export` is not among `@Provider`'s options at all. TypeScript
+rejects it at the decorator; a JavaScript caller that passes it anyway reaches the boot error, which
+names the provider and the replacement:
+
+```
+mesh: provider 'db' cannot be exported — a provider is a factory whose value is the object
+itself, and the mesh transports data, not objects. Export a @Step instead, which runs on the
+teapot per request and returns its result.
+```
+
+Export what the handle *produces* instead:
 
 ```typescript
 @Step({ provides: 'customer', needs: ['db'], export: true })
@@ -107,8 +116,8 @@ class Customer {
 }
 ```
 
-The teapot refuses an export it cannot transport, on the side that still holds the real value, and
-names what sat where:
+A step's *result* is checked too: the teapot refuses one it cannot transport, on the side that still
+holds the real value, and names what sat where:
 
 ```
 mesh cannot transport 'db': result.db is a Pool instance. The wire is JSON, so a mesh
@@ -139,7 +148,7 @@ conflicts with 'GET /api/shape/:id' from ws://a/__mesh__/control — load balanc
 across teapots is not implemented yet, so green-tea will not choose one for you.
 ```
 
-This is a hard error rather than a silent pick because there is no load balancing to fall back on: choosing one would be an arbitrary answer you could come to depend on. Scope tokens (`@Provider`/`@Step`) are unique for the same reason — and balancing them would be meaningless anyway, since an app-scope export is resolved once and cached.
+This is a hard error rather than a silent pick because there is no load balancing to fall back on: choosing one would be an arbitrary answer you could come to depend on. Step tokens are unique for the same reason.
 
 **Local routes win.** If you declare a route locally *and* import the same effective method/shape from a teapot, yours takes precedence — that is how you override a teapot — and green-tea warns so a shadowed export doesn't look like a broken one:
 
@@ -155,6 +164,7 @@ A dead upstream is not a broken service, and the status says which:
 
 | What happened | Status |
 | --- | --- |
+| The teapot never connected, so its routes were never registered | **404** Not Found — see [below](#when-a-teapot-is-not-there-yet) |
 | The link is down (closed, or the heartbeat gave up) | **503** Service Unavailable |
 | The link is up but the teapot didn't answer in `timeoutMs` | **504** Gateway Timeout |
 | The teapot answered with an error | whatever it said |
@@ -178,7 +188,7 @@ mesh: { teapots: [...], reconnect: { initialDelayMs: 500, maxDelayMs: 30_000 } }
 mesh: { teapots: [...], reconnect: false }   // fail once and stay down
 ```
 
-While a link is down its RPCs answer **503 immediately**, and a successful reconnect **re-registers that teapot's app-scope bindings** — so a provider that was resolved once at boot re-runs its RPC on the next resolve instead of answering from a cache the teapot no longer stands behind.
+While a link is down its RPCs answer **503 immediately**, and a reconnected link is simply usable again on the next RPC. There is nothing to invalidate or re-register: a remote export holds nothing between requests, so there is no cached value a returning teapot could disagree with.
 
 `app.close()` is terminal for a link: one the application hung up on never reconnects. Otherwise closing an app would leave a process that cannot exit.
 
@@ -190,8 +200,8 @@ The graph was validated at boot against the manifest the teapot announced then, 
 
 ```
 mesh: refusing to reconnect to ws://a/__mesh__/control — its manifest no longer exports
-app-scope 'billing', which the graph was validated against at boot. Retrying in case
-this is a partial deploy.
+step 'billing', which the graph was validated against at boot. Retrying in case this is
+a partial deploy.
 ```
 
 The link keeps retrying, because a rollback or a half-finished deploy can still restore it, and the refusal is logged once per distinct manifest rather than once per attempt. Serving against a manifest that no longer backs the graph would surface as a 500 that looks like your code.
@@ -208,14 +218,27 @@ A future release may add `'reconcile'`, which rebuilds the graph instead of refu
 
 ## When a teapot is not there yet
 
-A teapot that is thirty seconds behind and a teapot that does not exist look identical for the first thirty seconds, and only one of them should stop a deploy. `bootTimeoutMs` is the grace for the first:
+A teapot that is thirty seconds behind and a teapot that does not exist look identical for the first thirty seconds, and a container that is merely late should not fail a deploy. `bootTimeoutMs` is the grace for that:
 
 ```typescript
 mesh: { teapots: [...], bootTimeoutMs: 30_000 }   // the default is timeoutMs
 mesh: { teapots: [...], bootTimeoutMs: 0 }        // one attempt, no grace
 ```
 
-Within that budget the connection is retried with backoff. When it passes, **the boot still fails** — and that is deliberate. A provider the graph depends on is not optional, so booting without it would only move the failure to the first request, where it is a caller's 503 instead of your deploy's error.
+Within that budget the connection is retried with backoff. When it passes, the teacup **warns and starts without that teapot**. It can, because every export is a step or a proxied route: nothing needed that link resolved *at boot*, and a step is nothing but later.
+
+Starting is not degrading, though, and the difference is worth stating exactly. A teapot that never connected sent no manifest, so the teacup learned nothing about it — no step runners, no routes, a graph identical to the one it would have had if that teapot were never configured. Its routes therefore **404**, through the ordinary unmatched-route path, because nothing was ever registered to match. **503** is what a teapot that connected and *later* died answers: that link exists, its steps and routes are registered, and the dead link is what returns the status. Never reachable and reachable-then-gone are different situations, and they read differently on purpose.
+
+The warning names the teapot and says no manifest was exchanged, so a later 404 on one of its routes has a line to point back to:
+
+```
+mesh: teapot ws://a/__mesh__/control unreachable after 7 attempt(s) over 30000ms (…) — starting
+without it. No manifest was ever exchanged, so none of its steps or routes are in this graph: its
+routes 404 like any path that was never registered, and the boot still fails if anything local
+needs one of its tokens. This line is what a later 404 on one of its routes points back to.
+```
+
+That last clause is the one thing that still stops a deploy: a local step or handler that `@needs` a token only that teapot exported **fails the boot**, naming the teapot that did not connect. So a teacup that does not depend on an absent teapot starts, and one that does still fails where you can see it. To make a teapot's absence fatal on purpose, have something local need one of its tokens.
 
 **A refusal is not retried.** A wrong secret or a protocol-version mismatch is the teapot's decision and will be the same decision in thirty seconds, so it fails at once rather than spending the whole budget to reach an identical error. The two are told apart by whether the socket ever opened: a peer that accepted the connection and then hung up rejected you on purpose, while one that never accepted it may simply not be listening yet.
 
@@ -247,5 +270,5 @@ Peers are separate processes on separate deploy cadences, so the wire is version
 **The version is a compatibility boundary, not a changelog.** It moves only when a peer on the old version would *misparse a frame or misbehave silently* — a field removed, renamed or retyped, a new **required** field, or a new frame type that expects an answer the old peer cannot decode. Adding an **optional** field is none of those, so it does not move the number: `decode` validates only what a frame type requires and passes extras through. Bumping per change would make the number mean "work happened" rather than "we are incompatible", which is the one thing it exists to say.
 
 :::note[Skeleton limitations (by design)]
-No discovery, load-balancing, or failover yet. A teapot that is down when a teacup *boots* still fails that boot — reconnection covers links that connected at least once. A returning manifest is refused rather than reconciled, and extra exports in it are not spliced into the running graph.
+No discovery, load-balancing, or failover yet. A teapot that is down when a teacup *boots* is started without — its routes 404 and nothing stands in for it — and reconnection covers only links that connected at least once. A returning manifest is refused rather than reconciled, and extra exports in it are not spliced into the running graph.
 :::

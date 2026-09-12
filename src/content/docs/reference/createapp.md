@@ -64,7 +64,7 @@ const app = createApp(options);
 
 ### `MeshConfig`
 
-`{ secret?, teapots?, timeoutMs?, heartbeatMs?, reconnect?, onManifestChange?, bootTimeoutMs? }` — `teapots` is `{ url, secret }[]`; `timeoutMs` bounds an RPC (default 30s, → 504), `heartbeatMs` is the ping gap that detects a half-open link (default 15s, → 503). `reconnect` is `boolean | { initialDelayMs?, maxDelayMs? }` (default on; 500ms doubling to 30s with jitter), `onManifestChange` is `'refuse'` — the default, and the only policy today — and `bootTimeoutMs` is how long boot waits for a teapot that has not started yet (default `timeoutMs`; `0` for a single attempt). A refused handshake is never retried. See [Mesh](/docs/guides/mesh/).
+`{ secret?, teapots?, timeoutMs?, heartbeatMs?, reconnect?, onManifestChange?, bootTimeoutMs? }` — `teapots` is `{ url, secret }[]`; `timeoutMs` bounds an RPC (default 30s, → 504), `heartbeatMs` is the ping gap that detects a half-open link (default 15s, → 503). `reconnect` is `boolean | { initialDelayMs?, maxDelayMs? }` (default on; 500ms doubling to 30s with jitter), `onManifestChange` is `'refuse'` — the default, and the only policy today — and `bootTimeoutMs` is how long boot waits for a teapot that has not started yet (default `timeoutMs`; `0` for a single attempt) — exhausting it warns and starts without that teapot, whose routes then 404; the boot still fails if anything local needs one of its tokens. A refused handshake is never retried. See [Mesh](/docs/guides/mesh/).
 
 ## The `App`
 
@@ -87,5 +87,5 @@ const app = createApp(options);
 | `logger` | `Logger` | the app's logger — the one passed in, or the default |
 
 :::note
-On mesh apps, `graph` / `explain` / `inspect` / `degraded` are only available after `ready()` or the first serving call — the graph is finalized once remote scopes connect.
+On mesh apps, `graph` / `explain` / `inspect` / `degraded` are only available after `ready()` or the first serving call — the graph is finalized once the teapots have announced their steps and routes.
 :::
