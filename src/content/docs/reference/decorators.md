@@ -40,11 +40,18 @@ An app-scope value, built once at boot and cached, addressable by `provides`.
 A provider class may also declare an optional **`dispose()`** method. `app.close()` awaits it during
 shutdown, in reverse boot order, so a provider closes before the ones it depends on
 ([releasing what a provider opened](/docs/guides/dependency-injection/#releasing-what-a-provider-opened)).
-| `export` | `boolean` | `false` | expose over the mesh control channel ([mesh](/docs/guides/mesh/)) |
+
+A provider has no `export` option: its value is the object it builds, and only data crosses the
+[mesh](/docs/guides/mesh/#what-can-cross-data-never-behaviour). Export a `@Step` that returns what
+the value carried.
 
 ### `@Step(options)`
 
-A request-scope transform that merges keys into the context. Same options as `@Provider`.
+A request-scope transform that merges keys into the context. Same options as `@Provider`, plus one:
+
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `export` | `boolean` | `false` | expose over the mesh control channel; the step runs on the teapot per request ([mesh](/docs/guides/mesh/)) |
 
 ### `@Transformer(fn)`
 
