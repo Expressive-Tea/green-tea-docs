@@ -12,7 +12,7 @@ const app = createApp(options);
 | Option | Type | Default | Meaning |
 |---|---|---|---|
 | `modules` | `Ctor[]` | — | the `@Module` classes to wire (required) |
-| `plugins` | `Plugin[]` | `[]` | plugins, each limited to `bus.on` + `scope.add` + `onShutdown` ([plugins](/docs/guides/plugins/)) |
+| `plugins` | `Plugin[]` | `[]` | named objects `{ name, mount }`, each limited to `bus.on` + `scope.add` + `onShutdown` ([plugins](/docs/guides/plugins/)) |
 | `hooks` | `Hooks[]` | `[]` | lifecycle participation without extending the graph; `{ onShutdown }` today ([teardown](/docs/guides/dependency-injection/#releasing-what-a-provider-opened)) |
 | `limits` | `RequestLimits` | see below | body-size, concurrency, and timeout ceilings |
 | `devGraph` | `boolean` | `false` | mount `GET /__graph__` ([introspection](/docs/guides/introspection/)) |
@@ -75,6 +75,7 @@ const app = createApp(options);
 | `listen(port)` | `Promise<http.Server>` | boots providers, then serves |
 | `close({ timeoutMs? })` | `Promise<void>` | drains in-flight, closes streams + mesh links, then runs registered teardown (`dispose()`, `onShutdown`); after the deadline (default `10s`, or `createApp({ shutdownTimeoutMs })`) it warns and force-closes what is left. **Draining** is Node-only — on Deno and Bun use the server `serveDeno()`/`serveBun()` returned, which also runs teardown ([runtimes](/docs/guides/runtimes/)) |
 | `ready()` | `Promise<void>` | resolves the graph and mesh links without booting providers |
+| `boot()` | `Promise<void>` | boots providers now instead of on the first request; idempotent, shares its memo with `listen()` and `fetch()`, and a failure stays failed. A no-op on workerd, which has no startup outside a request ([runtimes](/docs/guides/runtimes/)) |
 | `fetch(request)` | `Promise<Response>` | Web-Standards HTTP/SSE handler for Node, Deno, Bun, and edge |
 | `upgrade(request, socket)` | `Promise<void>` | neutral WebSocket upgrade used by non-Node adapters |
 | `inspect(route)` | `InspectLine[]` | the provider/step/handler chain for a route |

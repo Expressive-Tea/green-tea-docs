@@ -11,6 +11,46 @@ Three of these are crashes, and each one exits the process rather than answering
 `26.8.0-beta.1` and using a CORS predicate, a custom `onError`, or the JSR package, read the first
 three sections before anything else.
 
+## A plugin is a named object
+
+*Landing in the next beta.* `Plugin` is now `{ name, mount(api) }`. It was `(api) => void`, and the name that `plugin:mounted`
+reports came from the function — which is empty for an arrow returned by a factory, `"plugin"` for a
+`const`, and whatever a minifier leaves. The event that exists to say which plugins mounted named
+none of them.
+
+```diff
+- const jwt = (options) => ({ scope }) => { scope.add(node); };
++ const jwt = (options) => ({
++   name: options.provides ?? 'jwt',
++   mount({ scope }) { scope.add(node); },
++ });
+```
+
+A failed mount now reads `plugin "jwt" failed to mount: …` and keeps the original error as its
+`cause`. Two plugins sharing a name fail `createApp`.
+
+→ [Plugins](/docs/guides/plugins/)
+
+## `app.boot()`
+
+*Landing in the next beta.* `listen()` boots the providers before it accepts a connection. Every
+other path — `app.fetch`, `serveDeno`, `serveBun`, `edgeHandler` — boots on the first request, and the
+boot result is memoized, failure included. A provider that throws there fails *every* request, answered
+by the runtime with a 500 that never reaches your `onError`, while the process looks healthy.
+
+`await app.boot()` before serving moves that failure to startup:
+
+```ts
+const app = createApp({ modules: [ApiModule] });
+await app.boot();               // throws here instead of on every request
+serveDeno(app, { port: 8000 });
+```
+
+It is idempotent and shares its memo with `listen()` and `fetch()`. On workerd there is no startup
+outside a request, so it moves nothing there.
+
+→ [Runtimes](/docs/guides/runtimes/)
+
 ## A CORS predicate that throws no longer takes the process down
 
 `cors.origins` accepts a predicate, and a predicate is the whole reason the option takes a function:

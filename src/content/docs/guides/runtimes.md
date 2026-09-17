@@ -22,6 +22,32 @@ Bun.serve({ fetch: app.fetch });
 export default { fetch: app.fetch };
 ```
 
+**`listen()` boots the providers before it accepts a connection; the other three do not.** Every
+other path — `app.fetch`, `serveDeno`, `serveBun`, `edgeHandler` — boots on the first request, and
+the boot result is memoized, failure included. A provider that throws there fails *every* request
+from then on, answered by the runtime with a 500 that never reaches your `onError`, while the
+process itself looks healthy.
+
+`await app.boot()` moves that failure to startup, where a bad key or an unreachable database
+belongs:
+
+```ts
+const app = createApp({ modules: [ApiModule] });
+await app.boot();               // throws here instead of on every request
+Deno.serve({ port: 8000 }, app.fetch);
+```
+
+| Entry point | Providers boot | A failing provider |
+|---|---|---|
+| `app.listen()` (Node) | Before accepting | `listen()` rejects |
+| `await app.boot()`, then serve | Before serving | `boot()` rejects; the process exits |
+| `serveDeno` / `serveBun` / `Deno.serve` / `Bun.serve` alone | First request | Every request fails, from the runtime |
+| `edgeHandler` (workerd) | First request, unavoidably | Every request fails until the next deploy |
+
+It is idempotent and shares its memo with `listen()` and `fetch()`, so calling both boots once.
+Unlike `ready()`, it does run provider factories. On workerd there is no startup outside a request,
+so there is nothing `boot()` can move — the row above is the whole story there.
+
 **Node is the reference implementation.** A parity suite pins `app.fetch` to Node's native
 listener — identical status, headers, and body for the same request. The other runtimes drive
 that *same* `app.fetch` / `app.upgrade` core, so they inherit that behaviour rather than
@@ -108,6 +134,7 @@ import { serveDeno } from '@green-tea/core/deno';
 const app = createApp({ modules: [ChatModule] });
 
 // HTTP + SSE via app.fetch, WebSocket via Deno.upgradeWebSocket — one call:
+await app.boot();
 serveDeno(app, { port: 8000 });
 ```
 
@@ -136,6 +163,7 @@ import { serveBun } from '@green-tea/core/bun';
 const app = createApp({ modules: [ChatModule] });
 
 // HTTP + SSE via app.fetch, WebSocket via Bun's server-level handler — one call:
+await app.boot();
 serveBun(app, { port: 8000 });
 ```
 
