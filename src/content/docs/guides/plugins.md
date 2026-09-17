@@ -3,20 +3,39 @@ title: Plugins
 description: "Extending the app safely via bus.on, scope.add and onShutdown."
 ---
 
-A plugin is a function that receives the app's API at boot. It gets exactly three
+A plugin is a named object — `{ name, mount(api) }` — whose `mount` receives the app's API at
+boot. It gets exactly three
 capabilities: **observe** the running system through `bus.on(...)`, **extend its own
 scope** through `scope.add(...)`, and **release what it opened** through `onShutdown(...)`.
 That's the whole surface — and it's deliberately narrow.
 
 ```typescript
-const logger = (api: any) => {
-  api.bus.on('request:step:enter', (p: any) => console.log(`→ ${p.name}`));
-  api.bus.on('stream:open', (p: any) => console.log(`stream open ${p.name}`));
-  api.bus.on('mesh:rpc:error', (p: any) => console.error('mesh rpc failed', p.error));
+const logger = {
+  name: 'logger',
+  mount(api: any) {
+    api.bus.on('request:step:enter', (p: any) => console.log(`→ ${p.name}`));
+    api.bus.on('stream:open', (p: any) => console.log(`stream open ${p.name}`));
+    api.bus.on('mesh:rpc:error', (p: any) => console.error('mesh rpc failed', p.error));
+  },
 };
 
 const app = createApp({ modules: [ApiModule], plugins: [logger] });
 ```
+
+## The name is yours to give
+
+`name` is a field rather than something read off the function, because a function's name is not
+dependable: an arrow returned straight from a factory has none, `const plugin = …` reports
+`"plugin"`, and a minifier rewrites either. The name is what `plugin:mounted` reports, and what a
+failed mount is blamed on:
+
+```text
+plugin "jwt" failed to mount: ENOENT: no such file or directory, open '/etc/keys/jwt.json'
+```
+
+The original error is kept as that error's `cause`. Two plugins with the same name fail
+`createApp`, so a plugin that can be mounted twice takes its name from whatever renames its node —
+by convention, its `provides` option.
 
 ## Releasing what a plugin opened
 
@@ -27,6 +46,7 @@ design — so `app.close()` does not return until it has finished or the deadlin
 ```typescript
 class MetricsPlugin {
   #timer?: ReturnType<typeof setInterval>;
+  readonly name = 'metrics';
 
   mount = (api: any) => {
     this.#timer = setInterval(() => this.flush(), 10_000);
@@ -37,6 +57,9 @@ class MetricsPlugin {
   };
 }
 ```
+
+`createApp({ plugins: [new MetricsPlugin()] })` — an instance satisfies `Plugin` because it has both
+members.
 
 The callback receives nothing on purpose. Whatever needs closing is already in the closure of
 the code that opened it, so no handle has to travel anywhere. If you find yourself wanting an
@@ -70,7 +93,7 @@ Subscribe to events on the `Bus` to observe boot, per-request execution, streami
 mesh activity without touching the pipeline itself:
 
 ```typescript
-api.bus.on('boot:provider:ready', (p: any) => { /* ... */ });
+api.bus.on('boot:provider:ok', (p: any) => { /* ... */ });
 api.bus.on('request:step:enter', (p: any) => { /* ... */ });
 api.bus.on('request:step:leave', (p: any) => { /* ... */ });
 ```

@@ -56,9 +56,12 @@ app.bus.on('request:end', (e) => count(e.route));            // you own the app
 ```
 
 ```ts
-const metrics: Plugin = (api) => {                            // you are extending someone's app
-  api.bus.on('request:end', (e) => count(e.route));
-  api.onShutdown(() => flush());
+const metrics: Plugin = {                                     // you are extending someone's app
+  name: 'metrics',
+  mount(api) {
+    api.bus.on('request:end', (e) => count(e.route));
+    api.onShutdown(() => flush());
+  },
 };
 ```
 
