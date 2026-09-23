@@ -44,7 +44,10 @@ export default defineConfig({
           items: [
             { label: 'Introduction', link: '/' },
             { label: 'Getting started', slug: 'getting-started' },
-            { label: "What's new", slug: 'whats-new', badge: { text: 'beta.1', variant: 'tip' } },
+            // No version badge here on purpose: these docs describe one version, the banner already
+            // names it, and a second copy of the number in the sidebar can only drift out of step —
+            // which it did, sitting at beta.1 through the beta.2 deploy.
+            { label: "What's new", slug: 'whats-new' },
           ],
         },
         {
