@@ -5,7 +5,8 @@
   "version": "26.9.0-beta.2",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
+    "clean": "rm -rf dist .astro node_modules/.astro",
+    "build": "npm run clean && astro build",
     "preview": "astro preview",
     "verify:release": "node scripts/verify-release-tag.mjs"
   },
