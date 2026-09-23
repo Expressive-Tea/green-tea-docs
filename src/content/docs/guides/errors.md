@@ -46,12 +46,12 @@ throw new HttpError(409, 'conflict', { code: 'DUP_EMAIL', field: 'email' });
 Not everything should be JSON. Pass `onError` to `createApp` to render errors however you like — HTML, [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807), content-negotiated, anything. It receives the error and the request, and returns a response — or `undefined` to fall back to the default JSON.
 
 ```typescript
-import { HttpError } from '@green-tea/core';
+import { isHttpError } from '@green-tea/core';
 
 const app = createApp({
   modules: [ApiModule],
   onError(error, req) {
-    const status = error instanceof HttpError ? error.status : 500;
+    const status = isHttpError(error) ? error.status : 500;
     // negotiate: HTML for browsers, JSON for API clients
     if (String(req.headers.accept).includes('text/html')) {
       return { status, headers: { 'content-type': 'text/html' }, body: `<h1>${status}</h1>` };
@@ -65,6 +65,21 @@ const app = createApp({
 
 :::note
 Errors are also observable without changing the response: subscribe to `request:step:error` (and `stream:error`) on [`app.bus`](/docs/guides/observability/#reaching-the-bus) to log or trace them.
+:::
+
+:::tip[Use `isHttpError`, not `instanceof`]
+Since `26.9.0-beta.2`, `HttpError` and `ValidationError` carry a brand —
+`Symbol.for('green-tea.http-error')` and `Symbol.for('green-tea.validation-error')` — and
+`isHttpError` / `isValidationError` check for it.
+
+`instanceof` compares constructors, so it answers `false` for an error thrown by a *different copy*
+of core: a plugin package that resolved its own dependency, or an app that installed from npm and
+JSR both. That `Unauthorized` used to fall through to a `500`, which is the least useful status it
+could have picked. The guard gets it right across copies; `instanceof` cannot.
+
+The string is the public protocol, so a package that imports only types can brand its own errors
+with `Symbol.for('green-tea.http-error')` and have them render correctly. `HttpErrorLike` is
+exported for that shape.
 :::
 
 ### If your renderer throws

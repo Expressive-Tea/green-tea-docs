@@ -17,12 +17,14 @@ Mesh runs on **Node, Deno and Bun**, as both teapot and teacup, in any combinati
 
 **Edge (Cloudflare Workers) is not supported.** The teapot's secret comparison uses `node:crypto`'s `timingSafeEqual`, which workerd's `nodejs_compat` does not provide.
 
-You do **not** need `listen()`. The graph boots on first use, so `Deno.serve`/`Bun.serve` work through `app.fetch`/`app.upgrade` like any other route:
+You do **not** need `listen()`. `serveDeno` and `serveBun` boot the graph before they bind, so a teacup has reached its teapots — or spent its `bootTimeoutMs` grace trying — by the time the port opens:
 
 ```typescript
-serveDeno(teapot, { port: 3002 });   // control channel served via app.upgrade
-serveBun(teacup, { port: 3003 });    // teapots connected on the first request
+await serveDeno(teapot, { port: 3002 });   // control channel served via app.upgrade
+await serveBun(teacup, { port: 3003 });    // teapots connected before this resolves
 ```
+
+Hand `app.fetch`/`app.upgrade` to `Deno.serve`/`Bun.serve` yourself and the graph boots on first use instead, which for a teacup means the first request pays for the connection. `await app.boot()` first if you want that cost at startup.
 
 ## Node A — teapot (exposes `config`, `auth`, and a route)
 
