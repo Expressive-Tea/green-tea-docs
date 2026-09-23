@@ -22,11 +22,12 @@ Bun.serve({ fetch: app.fetch });
 export default { fetch: app.fetch };
 ```
 
-**`listen()` boots the providers before it accepts a connection; the other three do not.** Every
-other path — `app.fetch`, `serveDeno`, `serveBun`, `edgeHandler` — boots on the first request, and
-the boot result is memoized, failure included. A provider that throws there fails *every* request
-from then on, answered by the runtime with a 500 that never reaches your `onError`, while the
-process itself looks healthy.
+**`listen()`, `serveDeno()` and `serveBun()` boot the providers before anything binds.** What stays
+lazy is what you drive yourself — `app.fetch` and `app.upgrade` handed to `Deno.serve`, `Bun.serve`
+or your own server — and `edgeHandler`, where workerd offers no startup to move the work to. Those
+boot on the first request, and the boot result is memoized, failure included. A provider that throws
+there fails *every* request from then on, answered by the runtime with a 500 that never reaches your
+`onError`, while the process itself looks healthy.
 
 `await app.boot()` moves that failure to startup, where a bad key or an unreachable database
 belongs:
@@ -40,13 +41,31 @@ Deno.serve({ port: 8000 }, app.fetch);
 | Entry point | Providers boot | A failing provider |
 |---|---|---|
 | `app.listen()` (Node) | Before accepting | `listen()` rejects |
+| `await serveDeno()` / `await serveBun()` | Before binding | the call rejects; no port opens |
 | `await app.boot()`, then serve | Before serving | `boot()` rejects; the process exits |
-| `serveDeno` / `serveBun` / `Deno.serve` / `Bun.serve` alone | First request | Every request fails, from the runtime |
+| `app.fetch` / `app.upgrade` on a server you own | First request | Every request fails, from the runtime |
 | `edgeHandler` (workerd) | First request, unavoidably | Every request fails until the next deploy |
 
 It is idempotent and shares its memo with `listen()` and `fetch()`, so calling both boots once.
 Unlike `ready()`, it does run provider factories. On workerd there is no startup outside a request,
-so there is nothing `boot()` can move — the row above is the whole story there.
+so there is nothing `boot()` can move — the last row is the whole story there.
+
+:::caution[Breaking in 26.9.0-beta.2]
+`serveDeno()` and `serveBun()` are async. They return `Promise<DenoServer>` and
+`Promise<BunServeResult>`, and the values they resolve to are unchanged:
+
+```diff
+- const server = serveDeno(app, { port });
++ const server = await serveDeno(app, { port });
+```
+
+Before this they were rows four and five of that table, and the documented fix was to remember
+`await app.boot()` first. That made the correct use of a core helper depend on reading this page —
+in a framework whose argument is that order should not be something you have to get right. Both
+runtimes support top-level `await`, so a module that serves at import time needs nothing else.
+`edgeHandler` is deliberately untouched: on workerd there is no startup outside a request, so there
+is no earlier moment to move the failure to.
+:::
 
 **Node is the reference implementation.** A parity suite pins `app.fetch` to Node's native
 listener — identical status, headers, and body for the same request. The other runtimes drive
@@ -75,7 +94,7 @@ warns if you passed `timeoutMs`. The server `serveDeno()` and `serveBun()` retur
 `close({ timeoutMs })` instead:
 
 ```ts
-const server = serveBun(app, { port: 3000 });   // or serveDeno(app, { port: 3000 })
+const server = await serveBun(app, { port: 3000 });   // or await serveDeno(app, { port: 3000 })
 await server.close({ timeoutMs: 5_000 });
 ```
 
@@ -135,7 +154,7 @@ const app = createApp({ modules: [ChatModule] });
 
 // HTTP + SSE via app.fetch, WebSocket via Deno.upgradeWebSocket — one call:
 await app.boot();
-serveDeno(app, { port: 8000 });
+await serveDeno(app, { port: 8000 });
 ```
 
 `serveDeno` routes normal requests through `app.fetch` and WebSocket upgrades through
@@ -164,7 +183,7 @@ const app = createApp({ modules: [ChatModule] });
 
 // HTTP + SSE via app.fetch, WebSocket via Bun's server-level handler — one call:
 await app.boot();
-serveBun(app, { port: 8000 });
+await serveBun(app, { port: 8000 });
 ```
 
 `serveBun` routes normal requests through `app.fetch` and WebSocket upgrades through
