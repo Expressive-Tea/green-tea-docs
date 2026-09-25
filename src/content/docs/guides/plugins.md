@@ -70,14 +70,28 @@ leave the process up. See [dependency injection](/docs/guides/dependency-injecti
 for the provider equivalent, and [runtimes](/docs/guides/runtimes/) for the one runtime where
 none of this happens.
 
-## Isolation is structural
+## What a plugin can and cannot touch
 
-A plugin can add steps and providers to **its own scope** via `scope.add(...)`. It
-**cannot** reorder or delete another scope's steps. The graph — not a policy check —
-enforces this: each scope owns its nodes, and a plugin has no handle on anyone else's.
-There's no ordering hook to abuse and no step registry to mutate. If you want a plugin to
-influence execution, it does so by contributing a node with declared `needs`/`provides`,
-and the framework computes where that node lands.
+A plugin registers through the three functions `mount` receives, and nothing else. It gets no
+handle on the container, the modules or another scope's nodes, and there is no ordering hook: if a
+plugin wants to influence execution, it contributes a node with declared `needs`/`provides`, and
+the framework works out where that node lands.
+
+Node names are unique across the app. A plugin node named like an existing provider or step fails
+`createApp`:
+
+```text
+duplicate provider/step name 'user' — names must be unique across modules and plugins
+```
+
+Tokens are a different matter. `scope.add` takes a node's name and the tokens it provides
+separately, so a plugin node with a name of its own can still provide a token the app already
+provides, and when it does, it takes that token over without a warning. The app's provider drops
+out of every route that needed it. The framework's own tokens (`logger`, `events`, and the request
+seeds `req` and `params`) are not affected, because they are registered after plugins.
+
+So give a plugin a token of its own, derived from its `provides` option, and never provide a token
+the app owns.
 
 :::note
 Because execution is per-route (a route runs only the transitive closure of its handler's
@@ -115,3 +129,22 @@ that caused them — which matters the moment two requests overlap.
 Observation is read-only: handlers see the event payload but can't alter control flow. To
 change behavior, contribute a node to your scope — see
 [Dependency injection](/docs/guides/dependency-injection/).
+
+## Write one, publish one
+
+`matcha create plugin` starts one. By default it writes an in-app plugin to `plugins/<name>/` and
+registers it in `createApp({ plugins })`. With `--package` it writes a package of its own instead:
+JSR by default, and `--registry both` adds an ESM-only npm build. See the
+[CLI guide](/docs/guides/cli/#generate--matcha-create).
+
+Three official plugins are published so far, and each has a page on the
+[plugin listing](https://green-tea.expressive-tea.io/plugins/) with its README, its versions and
+the runtimes it supports:
+
+- [`@green-tea/jwt`](https://green-tea.expressive-tea.io/plugins/jwt/)
+- [`@green-tea/metrics`](https://green-tea.expressive-tea.io/plugins/metrics/)
+- [`@green-tea/rate-limit`](https://green-tea.expressive-tea.io/plugins/rate-limit/)
+
+Listing yours takes one yaml file in a pull request. The listing's
+[CONTRIBUTING](https://github.com/Expressive-Tea/green-tea-marketplace/blob/main/CONTRIBUTING.md)
+says what it has to contain and what a reviewer checks.

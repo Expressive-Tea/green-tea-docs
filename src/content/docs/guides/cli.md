@@ -68,6 +68,19 @@ matcha create controller Users --check   # type-check with your runtime afterwar
 
 Writes the file **and wires it in** — into the right `@Module` array, or into `createApp({ modules })` for a module.
 
+### Plugins
+
+```bash
+matcha create plugin "Plugin Algo"                      # plugins/plugin-algo/index.ts, registered in createApp
+matcha create plugin --package=./algo --scope acme      # a package of its own, for JSR
+```
+
+An in-app plugin gets its own folder, so it can become a package later without being pulled out of
+the app. `--package` writes a package into the current directory, or `--package=DIR` into `DIR`;
+the `=` is required, and the directory has to be empty. At a terminal, matcha asks for whatever the
+flags leave out. Without one (CI, a pipe) it uses the defaults, and for anything that has no default
+it stops and names the flag to pass. See [Plugins](/docs/guides/plugins/#write-one-publish-one).
+
 ## Extend — `matcha add`
 
 ```bash
