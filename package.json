@@ -17,5 +17,8 @@
     "@astrojs/starlight": "^0.41.6",
     "astro": "^7.1.6",
     "sharp": "^0.35.3"
+  },
+  "overrides": {
+    "postcss-nested": "^7.0.2"
   }
 }
