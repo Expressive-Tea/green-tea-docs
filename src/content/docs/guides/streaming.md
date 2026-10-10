@@ -150,6 +150,57 @@ class ChatController {
 `@Ws` (and mesh) require the optional [`ws`](https://github.com/websockets/ws) peer dependency — `npm i ws`. SSE, ndjson, and plain HTTP need nothing extra.
 :::
 
+### Inbound limits
+
+Every WebSocket connection has two bounds on what the client sends, set server-wide in
+[`limits`](/docs/reference/createapp/#requestlimits):
+
+| Limit | Default | Over it |
+|---|---|---|
+| `maxWsMessageBytes` | `1_048_576` (1 MiB) per message, in bytes (UTF-8 bytes for text); a fragmented message counts as a whole | the connection closes with `1009` (`message too large`) |
+| `maxWsQueue` | `16` messages the handler has not read yet | the connection closes with `1013` (`inbound queue full`) |
+
+```typescript
+const app = createApp({
+  modules: [ChatModule],
+  limits: { maxWsMessageBytes: 256 * 1024, maxWsQueue: 64 },
+});
+```
+
+Nothing is dropped silently: the client learns which bound it hit from the close code. Both values
+must be positive integers, or `createApp` throws a `TypeError`. There is no per-route override, and
+the bounds apply to every inbound WebSocket the server accepts, the mesh control channel included.
+
+**The queue is per consumer.** Each iterator over `@inbound()` gets its own queue, receiving every
+message from the moment it starts reading, and `maxWsQueue` applies to each one. A message that
+would overflow any queue closes the connection without reaching the others. Messages that arrive
+before anything reads (while providers boot, or before your loop starts) are held for the first
+consumer. A consumer that stops iterating (`break`, `return`) is removed and no longer counts.
+
+That first queue exists whether or not the handler reads it. A `@Ws` handler that never iterates
+`@inbound()` is closed with `1013` when its client sends the 17th message at the defaults. Read the
+channel, or raise `maxWsQueue`, if your protocol lets the client send without waiting for replies.
+
+**How early a large message is refused depends on the runtime.** Node and Bun refuse it before
+buffering it. Deno and the edge receive it in full and then close, so their memory is bounded by the
+platform's own cap. Bun closes without a close frame, so its client sees `1006` instead of `1009`.
+See [Runtimes](/docs/guides/runtimes/#websocket-message-size).
+
+**Worst case.** Buffered inbound memory can reach about
+`maxConnections × maxWsQueue × maxWsMessageBytes`. At the Node defaults that is
+`1000 × 16 × 1 MiB` ≈ **15.6 GiB**, so lower one of the three before you expose a WebSocket
+to untrusted clients. `maxConnections` is enforced only on Node. Deno, Bun and the edge have no
+connection cap of their own, so set one at the platform or reverse proxy there.
+
+:::caution[Breaking after 26.9.0-beta.2]
+Before these limits, Node accepted messages up to `ws`'s own default of 100 MiB, Deno, Bun and
+the edge applied no cap, and the inbound queue was unbounded on every runtime. Now a message over
+1 MiB closes with `1009`, and a connection holding 16 unread messages closes on the 17th with
+`1013`. That includes a handler that never reads `@inbound()`: on Node those messages used to be
+discarded, and now they count. If your clients send larger messages or bursts, raise
+`maxWsMessageBytes` or `maxWsQueue`.
+:::
+
 ## Fan-out — `channel()` and `rooms`
 
 Fan-out is a primitive too: `channel()` is a **multicast** `AsyncIterable` (bounded, drop-oldest) so one source feeds many subscribers, and `rooms` are named broadcast hubs — publish once, every connection in the room receives it.

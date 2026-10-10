@@ -105,3 +105,19 @@ onError(error, req) {
 
 `onError` also renders the `404`, so a request to a path you never declared reaches it too — with
 whatever headers the caller felt like sending.
+
+### When even rendering fails (Node)
+
+A few failures happen after the point where errors become a response: a custom static resolver
+that throws, a header value from your handler that Node refuses to write, or a stream that fails
+before its first frame. On Node these no longer reach the process as an unhandled rejection. The
+request listener catches them, logs them through `logger.error`, and:
+
+- answers a fixed `500` with `connection: close` while the response is still writable, **without
+  calling `onError`**, since your renderer may be what failed;
+- destroys the socket once output has started, so the client sees a truncated reply rather than a
+  complete-looking one.
+
+No `request:end` is emitted for these requests ([observability](/docs/guides/observability/#requeststart-and-requestend-always-come-in-pairs)).
+Deno, Bun and the edge were never affected: they receive `app.fetch`'s promise, and the runtime
+answers a rejection with a `500` itself.

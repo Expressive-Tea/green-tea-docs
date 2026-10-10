@@ -133,6 +133,24 @@ const app3 = createApp({ modules: [ApiModule], static: '/srv/site' }); // absolu
 - Only `GET` and `HEAD` are handled — other methods fall through.
 - **Declared routes always win.** Static is only consulted when nothing matched, so `@Get('/api/ping')` is never shadowed by a file at `public/api/ping`.
 - Path traversal (`../`, encoded or not) is rejected — a request can't escape the static root.
+- Symlinks are confined to the root too. A file, or a directory's `index.html`, is served only if
+  its real path lies beneath the root's real path. Links that stay inside the root keep working, and
+  so does a root that is itself a symlink. The content-type follows the requested name, not the link
+  target (`app.js -> app.3f2a.js` is served as JavaScript).
+- A link that resolves outside the root, and a dangling link, are a **`404`**: the same miss as a
+  file that does not exist, rendered through [`onError`](/docs/guides/errors/) like any other
+  (`405`/`204` where the path has routes). It is deliberately not a `403`, so a probe cannot tell
+  "exists outside the root" from "does not exist".
+
+:::caution[Re-pointing the root needs a restart]
+The root's real path is resolved on the first request and cached for the life of the app, so
+re-pointing a root symlink (a `current -> releases/42` deploy, say) takes effect only after a
+restart. A root that is missing at that first request is not cached: it starts serving once it
+exists.
+
+One race stays open: a link swapped inside the root between the check and the read can still
+escape. Exploiting it needs write access to the served directory.
+:::
 
 Like the file/template modes of `@Html`, `static` needs a filesystem: it's Node/Deno/Bun only. Configuring it on an edge runtime throws at `createApp()` time — see [Runtimes](/docs/guides/runtimes/).
 

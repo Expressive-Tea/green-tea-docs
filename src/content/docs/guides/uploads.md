@@ -66,6 +66,22 @@ uploadAvatar(@body() form: MultipartBody) { /* ... */ }
 
 A route's `maxBodyBytes` / `maxParts` fall back to the server-wide `limits` when unset. A malformed multipart body (bad boundary, missing headers, truncated part) → **400**.
 
+### When the limit is checked
+
+`maxBodyBytes` is enforced while the body arrives, not after, on Node, Deno, Bun and the edge alike:
+
+- A `Content-Length` that already declares more than the limit is refused with `413` before any of
+  the body is read.
+- Otherwise the body is read chunk by chunk, and reading stops at the chunk that crosses the limit.
+  The rest of the upload is not pulled, so a 10 GB upload is not buffered before it is refused.
+- A malformed or absent `Content-Length` proves nothing and is ignored. The running count enforces
+  the limit either way.
+
+The `413` is the same in every case and goes through [`onError`](/docs/guides/errors/), with the same
+route-over-server precedence for `maxBodyBytes` and `maxParts`. On workerd, which may drop
+`Content-Length` from a chunked upload, an oversized body is refused by the count instead of up
+front. Only how early the `413` comes differs.
+
 :::note
 To validate parsed fields against a schema, pass a Standard Schema to `@body()` — see [validation](/docs/guides/validation/).
 :::

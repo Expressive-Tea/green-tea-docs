@@ -32,6 +32,11 @@ Behind a reverse proxy, reads `X-Forwarded-Proto` / `X-Forwarded-For` to populat
 forwarded headers are ignored (and spoofable) until you opt in. It trusts the immediate hop
 unconditionally; there's no CIDR allowlist yet.
 
+With `trustProxy` on and no `X-Forwarded-For` header, `ctx.ip` falls back to the socket peer. That
+is the same on Node, `serveDeno()` and `serveBun()`. See
+[Runtimes](/docs/guides/runtimes/#the-client-address--ctxip) for where the peer is and is not
+available.
+
 ## CORS
 
 Off unless `origins` is set.
@@ -103,6 +108,21 @@ judgement trusts the incoming `X-Forwarded-Proto` header — so a client that sp
 insecure and **suppress the HSTS header**. Only enable `trustProxy` behind a proxy that
 strips and sets forwarded headers itself, and terminate TLS where you control that hop.
 :::
+
+## Hardening that needs no option
+
+These hold by default, with nothing to turn on:
+
+- **Request bodies** are refused with `413` while they arrive, before an oversized body is buffered,
+  on every runtime: [uploads](/docs/guides/uploads/#when-the-limit-is-checked).
+- **Inbound WebSocket messages** are capped at 1 MiB each and 16 unread per connection
+  (`maxWsMessageBytes`, `maxWsQueue`), closing with `1009` / `1013`:
+  [streaming](/docs/guides/streaming/#inbound-limits).
+- **Static files** never resolve outside the static root, through `../` or through a symlink, and
+  an escape is a `404`, not a `403`: [HTML & views](/docs/guides/html/#static-files--createapp-static-).
+- **`ctx.ip`** is the client address on Node and through `serveDeno()` / `serveBun()`, so anything
+  keyed on it, such as a rate limiter, does not put every client in one bucket:
+  [runtimes](/docs/guides/runtimes/#the-client-address--ctxip).
 
 ## Defaults
 
