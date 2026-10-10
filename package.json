@@ -10,6 +10,9 @@
     "preview": "astro preview",
     "verify:release": "node scripts/verify-release-tag.mjs"
   },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "dependencies": {
     "@astrojs/starlight": "^0.41.6",
     "astro": "^7.1.6",

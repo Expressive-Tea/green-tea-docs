@@ -21,7 +21,13 @@ npm install ws       # WebSocket routes (@Ws) and mesh
 npm install busboy   # multipart/form-data file uploads
 ```
 
-green-tea runs on **Node ≥ 18, Deno, Bun, and the edge** — the same app, you only swap the entry point. This guide uses Node; see [runtimes](/docs/guides/runtimes/) for the others and for what the edge can't offer.
+green-tea runs on **Node ≥ 22, Deno, Bun, and the edge** — the same app, you only swap the entry point. This guide uses Node; see [runtimes](/docs/guides/runtimes/) for the others and for what the edge can't offer.
+
+:::caution[Breaking after 26.9.0-beta.2]
+Up to 26.9.0-beta.2, `@green-tea/core` ran on Node 18 and 20. Both are end-of-life, so from the
+next release Node 22 is the minimum. If you deploy on Node 18 or 20, upgrade Node before you upgrade
+green-tea.
+:::
 
 green-tea uses **legacy** TypeScript decorators. Enable them in your `tsconfig.json`:
 
