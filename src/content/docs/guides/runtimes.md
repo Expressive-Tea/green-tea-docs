@@ -137,9 +137,12 @@ server was started with throws `BadResource` once `shutdown()` is pending. So on
 bounds how long `close()` waits, not when the connections die. Exit the process after `close()`
 resolves and the effect is the same; keep serving and it is not.
 
-**Body-size enforcement differs slightly:** on `app.fetch`, an oversized body is read in full
-before the `413` is returned, whereas Node aborts mid-stream once the limit is hit — so on
-non-Node runtimes, also bound request size at the platform/runtime layer.
+**Body-size enforcement is the same on every runtime.** `maxBodyBytes` is checked while the body
+is read: a `Content-Length` that already declares more than the limit is refused before any of the
+body is read, and otherwise reading stops at the chunk that crosses it, so an oversized upload is
+never buffered in full. The answer is the same `413` everywhere. The one difference is on workerd,
+which may drop `Content-Length` from a chunked upload, so there the refusal comes from the running
+count rather than up front. See [uploads](/docs/guides/uploads/#limits).
 
 ## WebSocket on Deno
 
@@ -229,6 +232,46 @@ is **not** supported on edge: the teapot's secret comparison needs `node:crypto`
 Durable Objects and WebSocket Hibernation are **not** used — `edgeHandler` accepts
 WebSockets with the standard `WebSocketPair` model, so a Worker holds the connection
 open for its lifetime rather than hibernating between messages.
+
+## WebSocket message size
+
+[`limits.maxWsMessageBytes`](/docs/guides/streaming/#inbound-limits) (default 1 MiB) applies on
+every runtime, but only Node and Bun let the server refuse a message before it is buffered:
+
+| Runtime | Oversized message refused | The client sees |
+|---|---|---|
+| Node | before buffering (`ws`'s `maxPayload`) | `1009` |
+| Bun | before buffering (Bun's `maxPayloadLength`) | `1006`: Bun drops the connection without a close frame |
+| Deno | after the whole message is received | `1009` |
+| edge (workerd) | after the whole message is received | `1009` |
+
+Deno and workerd offer no per-message size option, so there the message is held in memory before
+the limit is checked, and only the platform's own cap bounds it. `maxWsQueue` behaves the same on
+all four.
+
+## The client address — `ctx.ip`
+
+`serveDeno()` and `serveBun()` give `app.fetch` the socket peer, so `ctx.ip` is populated on Deno and
+Bun as it is on Node. All three follow one rule: with `trustProxy` on and an `X-Forwarded-For`
+header present, `ctx.ip` is the header's first hop; otherwise it is the socket peer. That includes
+`trustProxy` with no `X-Forwarded-For`, which falls back to the peer.
+
+Addresses are passed through as each runtime reports them. The IPv6 loopback is `::1` on all three,
+but Node may report an IPv4 client in IPv4-mapped form, such as `::ffff:127.0.0.1`. Normalize before
+comparing addresses across runtimes.
+
+Two cases have no socket to report, and `ctx.ip` is `''` there (or the forwarded hop, with
+`trustProxy`):
+
+- `app.fetch` handed to a server directly, as in `Deno.serve(app.fetch)` or
+  `Bun.serve({ fetch: app.fetch })`, or called from your own code. Only `serveDeno()` and
+  `serveBun()` pass the peer along. A `Request` copied from the one the adapter received carries
+  nothing either.
+- `edgeHandler`. Trusting `CF-Connecting-IP` is only correct behind Cloudflare,
+  so the edge adapter does not read it.
+
+Anything keyed on `ctx.ip`, such as a rate limiter, needs one of the populated paths. Otherwise every
+client lands in the same bucket.
 
 ## Filesystem features — Node/Deno/Bun only
 

@@ -24,7 +24,7 @@ npm run build    # static build into dist/
 npm run preview  # serve the built site
 ```
 
-Node 18+ and nothing else — the site has no dependency on the framework it documents.
+Node 22.12+ and nothing else — the site has no dependency on the framework it documents.
 
 ## Where things live
 

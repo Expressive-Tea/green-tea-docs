@@ -26,7 +26,7 @@ const app = createApp(options);
 | `onError` | `ErrorRenderer` | — | render errors your way ([error handling](/docs/guides/errors/)); returns a response or `undefined` to fall back to JSON |
 | `views` | `string` | `process.cwd()` | base dir `@Html('file.html')` paths resolve against — relative paths join it, absolute paths are used as-is ([HTML & views](/docs/guides/html/)) |
 | `viewEngine` | `(source: string, data: unknown) => string` | built-in `render` | swap in your own template engine for `@Html(..., { template: true })`; template mode only ([HTML & views](/docs/guides/html/)) |
-| `static` | `boolean \| string` | — | serve a directory as a `GET`/`HEAD` fallback (after declared routes, before `404`); `true` → `./public`, a string → that dir; path-traversal-safe; needs a filesystem — Node/Deno/Bun only ([HTML & views](/docs/guides/html/)) |
+| `static` | `boolean \| string` | — | serve a directory as a `GET`/`HEAD` fallback (after declared routes, before `404`); `true` → `./public`, a string → that dir; path-traversal-safe; needs a filesystem — Node/Deno/Bun only; a symlink that resolves outside the root is a `404` ([HTML & views](/docs/guides/html/#static-files--createapp-static-)) |
 | `logger` | `Logger` | structured JSON (readable on a TTY) | where every framework diagnostic is written; also injectable as `@needs('logger')` ([observability](/docs/guides/observability/)) |
 | `logRequests` | `boolean` | `false` | log one line per completed request and per failure; a removable Bus subscriber, not a middleware ([observability](/docs/guides/observability/)) |
 | `shutdownTimeoutMs` | `number` | `10_000` | how long `close()` gives in-flight work before forcing the rest shut; `close({ timeoutMs })` still wins per call. Set it here when `close()` is reached from a signal handler or shutdown hook you do not own ([runtimes](/docs/guides/runtimes/)) |
@@ -47,6 +47,12 @@ const app = createApp(options);
 | `headersTimeoutMs` | `10_000` |
 | `keepAliveTimeoutMs` | `5_000` |
 | `maxParts` | `1000` (multipart) |
+| `maxWsMessageBytes` | `1_048_576` (1 MiB): the largest inbound WebSocket message, in bytes (UTF-8 bytes for text); a fragmented message counts as a whole. A larger one closes the connection with `1009` (`1006` on Bun) |
+| `maxWsQueue` | `16`: inbound WebSocket messages a connection may hold that the handler has not read yet. One more closes the connection with `1013` |
+
+`maxBodyBytes` is enforced while the body is read, on every runtime: a `Content-Length` that already declares more is refused before any of the body is read, and otherwise reading stops at the chunk that crosses the limit ([uploads](/docs/guides/uploads/#limits)).
+
+`maxWsMessageBytes` and `maxWsQueue` must be positive integers; anything else makes `createApp` throw a `TypeError`. Both are server-wide, apply on every runtime, and have no per-route override. How early an oversized message is refused depends on the runtime ([streaming](/docs/guides/streaming/#inbound-limits), [runtimes](/docs/guides/runtimes/#websocket-message-size)).
 
 `maxConcurrentRequests` is enforced before request-body acquisition in both the Node and Fetch paths, so it applies across Node, Deno, Bun, and edge — as a budget per server or Fetch adapter instance, not one ceiling shared by the app ([runtimes](/docs/guides/runtimes/)). Long-lived streams release their slot once request handling returns, and WebSocket upgrades are outside this budget.
 

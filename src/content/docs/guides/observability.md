@@ -156,6 +156,16 @@ That is the gauge this guarantee exists for. Without it, the counter would drift
 server shed a request — under load, which is when you are looking at it, and it would drift by
 producing a plausible wrong number rather than an error.
 
+:::caution[Known gap: Node's last-resort 500]
+The one exception is a request whose handling fails past the error renderer on Node, which is
+answered by the listener's [fixed `500`](/docs/guides/errors/#when-even-rendering-fails-node) and
+emits no `request:end` of its own. If the failure happens while the response is being produced, for
+example in a custom static resolver, the `request:start` is left without its `request:end`. If it
+happens while the response is being written, `request:end` has already fired with the status the
+handler produced, not the `500` the client received. The failure is logged through `logger.error`
+either way.
+:::
+
 ### Where a streaming request ends
 
 `request:end` fires **when the handler returns**, not when a stream it produced finishes.
