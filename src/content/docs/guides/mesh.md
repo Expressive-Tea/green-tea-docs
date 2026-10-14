@@ -152,6 +152,8 @@ across teapots is not implemented yet, so green-tea will not choose one for you.
 
 This is a hard error rather than a silent pick because there is no load balancing to fall back on: choosing one would be an arbitrary answer you could come to depend on. Step tokens are unique for the same reason.
 
+Different shapes can still collide. Suppose one teapot exports `/u/:id(\d+)` and another exports `/u/:n(\d{1,3})`. Both accept `0`, so boot fails with `mesh: ambiguous remote route …: both match '0' (GET /u/0)`. A plain param next to a constraint that accepts every segment fails as unreachable. These are the [overlapping-constraint rules](/docs/guides/routing/#overlapping-constraints-fail-at-boot) local routes follow.
+
 **Local routes win.** If you declare a route locally *and* import the same effective method/shape from a teapot, yours takes precedence — that is how you override a teapot — and green-tea warns so a shadowed export doesn't look like a broken one:
 
 ```

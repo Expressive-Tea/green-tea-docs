@@ -55,6 +55,63 @@ When more than one route matches the same path, the **most specific wins** — `
 
 Two routes under the same method cannot have the same effective shape: `/users/:id` and `/users/:name` are ambiguous and make boot fail with both declarations named. The same rule applies after mesh routes join. Different methods may reuse a shape.
 
+## Overlapping constraints fail at boot
+
+The precedence rules pick a winner whenever two routes match one request. Some declarations still go wrong. Two constraints can accept the same segment, so only declaration order decides between them. Or a route can lose every request it could match, so it never runs. `createApp` refuses both, naming both declarations.
+
+The check compares two routes with the same method that **branch at the same segment, under the same prefix**, where both are params and at least one is constrained. A static segment or a catch-all at the branch is not checked: precedence already decides those cases.
+
+### Ambiguous: two constraints that share a segment
+
+```typescript
+@Get('/u/:id(\\d+)')
+@Get('/u/:n(\\d{1,3})')
+```
+
+```
+ambiguous route GET /u/:n(\d{1,3}) at Users.byNumber conflicts with GET /u/:id(\d+) at Users.byId:
+both match '0' (GET /u/0), so only declaration order would choose between them — give the
+constraints disjoint languages, or merge the routes
+```
+
+The quoted segment is a **witness**: a real value both constraints accept, with a request path that reaches both routes. Two spellings of the same language, such as `\d+` and `[0-9]+`, are ambiguous too.
+
+The rest of the patterns counts as well. `/u/:id(\d+)/a` and `/u/:n(\d{1,3})/b` share digits at the branch but can never match the same request, so they boot. Disjoint constraints such as `\d+` and `[a-z]+` boot, and so do overlapping constraints under different methods.
+
+### Unreachable: a constraint that takes every segment
+
+```typescript
+@Get('/algo/:id')
+@Get('/algo/:a([^]*)')
+```
+
+```
+unreachable route GET /algo/:id at Algo.byId: GET /algo/:a([^]*) at Algo.any matches every
+request it would, and wins each one — its constraint accepts every segment, and a constrained
+parameter outranks a plain one. Remove one of them, or narrow the constraint
+```
+
+`[^]*` and `[\s\S]+` accept every segment. **`.*` does not**: without the `s` flag, `.` does not match a line terminator, so `/algo/%0A` still reaches `:id` and that pair boots.
+
+### Not an error: the constrained fallback
+
+A plain param next to a constraint that leaves some segments over is the pattern constraints exist for, and it boots unchanged:
+
+```typescript
+@Get('/u/:id(\\d+)') // /u/42  → params.id   = "42"
+@Get('/u/:slug')     // /u/bob → params.slug = "bob"
+```
+
+Digits go to `:id` and everything else goes to `:slug`, whichever is declared first.
+
+### WebSocket and mesh routes
+
+WebSocket routes follow the same rules, under their own precedence: **an upgrade goes to the first declared `@Ws` route that matches**, not the most specific one. So a plain WS param declared before a constrained sibling makes the constrained one unreachable, and boot fails. Declare the constrained route first, as in the fallback above. A `@Stream` route is served as both HTTP and WebSocket, so it is checked against both kinds.
+
+Routes exported by different [mesh](/docs/guides/mesh/) teapots are checked against each other the same way. A local route that overlaps a remote one is still the deliberate override, not an error.
+
+The check is exact: no sampling, no list of known patterns. The safe constraint subset makes it decidable. It runs once at boot and changes nothing about how requests are matched. The worst case the 128-character limit allows takes about 90 ms.
+
 ## HEAD and OPTIONS
 
 An explicit `@Head` or `@Options` route always wins. Without an explicit HEAD route, HEAD falls back to a matching **buffered** GET handler, preserves its status and headers, and suppresses the body. Streaming GET routes do not become implicit HEAD routes.
