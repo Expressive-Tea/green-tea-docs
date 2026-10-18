@@ -19,8 +19,8 @@ jobs:
       ARCHIVE_NAME: green-tea-docs-${{ github.ref_name }}.tar.gz
       RELEASE_TAG: ${{ github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
       - run: npm ci
@@ -43,7 +43,7 @@ jobs:
       - name: Verify the archive has a home page
         run: tar -tzf "$ARCHIVE_NAME" | grep -Fx './index.html'
       - name: Attach to GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           prerelease: true
           files: ${{ env.ARCHIVE_NAME }}
