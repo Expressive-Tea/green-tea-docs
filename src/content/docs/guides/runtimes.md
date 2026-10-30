@@ -10,7 +10,7 @@ same app runs on any runtime that speaks the Fetch API — for **HTTP and SSE** 
 const app = createApp({ modules: [ApiModule] });
 
 // Node (native listener, TLS, timeouts)
-app.listen(3000);
+await app.listen(3000); // rejects if the port is taken or a provider fails to boot
 
 // Deno
 Deno.serve(app.fetch);

@@ -98,8 +98,9 @@ It also accepts a schema in slot 2 — `@header('x-count', schema)`.
 
 `@cookies()` injects the request's cookies as a name → value map (`{}` when the request sent
 none); `@cookie('name')` picks one, and is `undefined` when it is absent. Both accept the same
-forms as `@headers`, including a schema. `@needs('cookies')` gives the same map, for a step that
-reads cookies.
+forms as `@headers`, including a schema. In a handler, `@needs('cookies')` gives the same map. A
+`@Step` cannot declare `needs: ['cookies']` (that fails `createApp`). A step that reads cookies
+parses them itself with `parseCookies(ctx.headers.cookie)`.
 
 ```typescript
 import { Route, Get, cookie, setCookie } from '@green-tea/core';

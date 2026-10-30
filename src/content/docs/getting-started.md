@@ -89,7 +89,7 @@ class ApiModule {}
 
 const app = createApp({ modules: [ApiModule] });
 console.log(app.explain('/api/users/:id')); // auditable: the ordered chain, with origins
-app.listen(3000);
+await app.listen(3000); // rejects if the port is taken or a provider fails to boot
 ```
 
 ```bash

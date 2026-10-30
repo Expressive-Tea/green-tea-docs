@@ -55,7 +55,7 @@ const view = app.graph();
 
 Two things worth knowing before you assert against it:
 
-- **The framework contributes its own nodes.** `logger` and `rooms` appear with
+- **The framework contributes its own nodes.** `logger`, `events` and `rooms` appear with
   `origin: 'builtin'` even in an application that declared neither. Filter on `origin` when you
   mean "the nodes I wrote".
 - `routes[].chain` holds node **names**, while `explain()` returns the resolved nodes. Use
