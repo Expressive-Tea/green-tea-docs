@@ -1,6 +1,6 @@
 ---
 title: Graph introspection
-description: "The graph is data. Explain one route, walk the structure, or render it as Mermaid or DOT."
+description: "The graph is data. Explain one route, walk the structure, render it as Mermaid or DOT, and serve liveness and readiness probes."
 ---
 
 Because the request/boot pipeline is an explicit [dependency graph](/docs/concepts/the-graph/),
@@ -105,8 +105,60 @@ optional dependency that failed to initialize but did not abort boot.
 const down = app.degraded();  // → ['cache']
 ```
 
-It is a health signal: surface it on a readiness endpoint so partial availability is something
-you report rather than something a user discovers.
+It is a health signal: partial availability should be something you report rather than something
+a user discovers. The built-in readiness probe below already reports it, so you do not need an
+endpoint of your own for it.
+
+## Health probes — `createApp({ health })`
+
+`health: true` serves two endpoints for load balancers and orchestrators:
+
+```typescript
+const app = createApp({ modules: [ApiModule], health: true });
+// GET /__live__   → 200 {"status":"ok"}
+// GET /__ready__  → 503 {"status":"booting"} … 200 {"status":"ok"} … 503 {"status":"draining"}
+```
+
+- **`/__live__`** answers `200 {"status":"ok"}` whenever the process answers. It says the process is
+  up, nothing more.
+- **`/__ready__`** says whether to send it traffic:
+
+  | State | Response |
+  |---|---|
+  | booting — until `boot()` resolves | `503 {"status":"booting"}` |
+  | ready | `200 {"status":"ok"}` |
+  | ready, with degraded optional providers | `200 {"status":"degraded","degraded":["cache"]}` (from `app.degraded()`) |
+  | draining — from the moment `close()` starts | `503 {"status":"draining"}` |
+
+  The state only moves forward: a boot that finishes after `close()` started stays draining.
+  `close()` here is Node's `app.close()` or the `close()` that `serveDeno()` / `serveBun()` return.
+  On the edge there is no `close()`, so `/__ready__` never reports `draining` there.
+
+Probes are answered by the adapter, ahead of `maxConcurrentRequests` and the route table, so a busy
+server never sheds them, and they run no step, provider, plugin or `onError`. They also emit no
+lifecycle event: `logRequests` and metrics plugins do not see them, which keeps a probe every few
+seconds out of your request logs. Security headers still apply, plus `cache-control: no-store`.
+Both paths answer `GET` and `HEAD`; any other method gets `405` with `Allow: GET, HEAD`. The match is
+on the exact path, so a query string is ignored.
+
+While `health` is on, both paths are reserved: a route at `/__live__` or `/__ready__`, local or
+spliced from a teapot, fails the boot.
+
+### Draining before shutdown — `drainDelayMs`
+
+```typescript
+createApp({ modules: [ApiModule], health: { drainDelayMs: 5000 }, shutdownTimeoutMs: 15000 });
+```
+
+A load balancer only stops routing to an instance after it has seen `/__ready__` fail. Without a
+delay, Node closes idle keep-alive connections as soon as `close()` starts, so the probe usually
+sees a refused connection rather than a `503`. `drainDelayMs` (default `0`) keeps the listener open
+that long after `close()` starts, with `/__ready__` already answering `503`, before connections
+drain.
+
+That window is spent out of the shutdown budget, not added to it. `createApp` throws when
+`drainDelayMs` plus `teardownTimeoutMs` exceeds `shutdownTimeoutMs` (default 10 s), and on any
+`health` value other than `true`, `false` or `{ drainDelayMs?: number }`.
 
 ## Related
 

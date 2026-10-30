@@ -73,7 +73,10 @@ A route's `maxBodyBytes` / `maxParts` fall back to the server-wide `limits` when
 - A `Content-Length` that already declares more than the limit is refused with `413` before any of
   the body is read.
 - Otherwise the body is read chunk by chunk, and reading stops at the chunk that crosses the limit.
-  The rest of the upload is not pulled, so a 10 GB upload is not buffered before it is refused.
+  The rest of the upload is not pulled, so a 10 GB upload is not buffered before it is refused. On
+  Deno, Bun and the edge, a well-formed `Content-Length` within the limit is read in one
+  `arrayBuffer()` instead, because the runtime frames the body by that header; only a chunked upload
+  takes the chunk-by-chunk read.
 - A malformed or absent `Content-Length` proves nothing and is ignored. The running count enforces
   the limit either way.
 

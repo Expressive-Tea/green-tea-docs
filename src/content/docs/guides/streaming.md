@@ -123,6 +123,14 @@ cleanly, and emits `stream:error` on the [bus](/docs/guides/observability/). A c
 an `error` event knows what happened; a connection that merely dropped tells it nothing, which is why
 the frame comes first.
 
+### `ctx.ip` inside a stream body
+
+`ctx.ip` is worked out the first time something reads it, not on every request. A stream body runs
+after the response has started, when the socket the address would come from may already be gone, so
+**inside a stream body `ctx.ip` is `''`** unless a step or the handler read it before returning the
+stream. A route that needs the address in a stream reads it first, as rate-limit already does. See
+[Runtimes](/docs/guides/runtimes/#the-client-address--ctxip) for what reading it costs.
+
 ## Streaming — WebSocket duplex
 
 A WS handler receives the **inbound** channel and returns the **outbound** channel — a step that consumes one channel and produces another.
@@ -169,7 +177,9 @@ const app = createApp({
 
 Nothing is dropped silently: the client learns which bound it hit from the close code. Both values
 must be positive integers, or `createApp` throws a `TypeError`. There is no per-route override, and
-the bounds apply to every inbound WebSocket the server accepts, the mesh control channel included.
+the bounds apply to every `@Ws` and `@Stream` WebSocket the server accepts. The mesh control channel
+starts under tighter bounds and has its own larger ones once its peer authenticates; see
+[mesh](/docs/guides/mesh/#keeping-the-control-channel-honest).
 
 **The queue is per consumer.** Each iterator over `@inbound()` gets its own queue, receiving every
 message from the moment it starts reading, and `maxWsQueue` applies to each one. A message that
@@ -183,8 +193,8 @@ channel, or raise `maxWsQueue`, if your protocol lets the client send without wa
 
 **How early a large message is refused depends on the runtime.** Node and Bun refuse it before
 buffering it. Deno and the edge receive it in full and then close, so their memory is bounded by the
-platform's own cap. Bun closes without a close frame, so its client sees `1006` instead of `1009`.
-See [Runtimes](/docs/guides/runtimes/#websocket-message-size).
+platform's own cap. Bun before 1.4 closes without a close frame, so its client sees `1006` instead
+of `1009`; Bun 1.4 and later send `1009`. See [Runtimes](/docs/guides/runtimes/#websocket-message-size).
 
 **Worst case.** Buffered inbound memory can reach about
 `maxConnections × maxWsQueue × maxWsMessageBytes`. At the Node defaults that is
@@ -192,7 +202,7 @@ See [Runtimes](/docs/guides/runtimes/#websocket-message-size).
 to untrusted clients. `maxConnections` is enforced only on Node. Deno, Bun and the edge have no
 connection cap of their own, so set one at the platform or reverse proxy there.
 
-:::caution[Breaking after 26.9.0-beta.2]
+:::caution[Breaking in RC.1]
 Before these limits, Node accepted messages up to `ws`'s own default of 100 MiB, Deno, Bun and
 the edge applied no cap, and the inbound queue was unbounded on every runtime. Now a message over
 1 MiB closes with `1009`, and a connection holding 16 unread messages closes on the 17th with
@@ -200,6 +210,17 @@ the edge applied no cap, and the inbound queue was unbounded on every runtime. N
 discarded, and now they count. If your clients send larger messages or bursts, raise
 `maxWsMessageBytes` or `maxWsQueue`.
 :::
+
+### Outbound backpressure
+
+The values a `@Ws` handler yields are pulled only as fast as the client reads them. Before each pull
+the framework waits while the socket's send buffer is over 1 MiB, an internal mark rather than an
+option, so a slow client holds at most about that plus one frame. A client that keeps up never makes
+it wait. If the client goes away during the wait, the wait ends and the iterator's `return()` runs, as
+on any other close.
+
+Node, Bun and Deno each report their send buffer, so the wait works there. **workerd reports no
+buffered amount, so on the edge the framework never waits** and buffering is left to the platform.
 
 ## Fan-out — `channel()` and `rooms`
 
