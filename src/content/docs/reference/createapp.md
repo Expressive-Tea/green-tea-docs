@@ -44,6 +44,16 @@ The options object is the exported `AppOptions` interface. Everything except `mo
 | `experimental` | `boolean` | `false` | opt in to alpha features (currently gates `mesh`) |
 | `warnGraphDepth` | `number \| false` | `20` | warn when one route resolves to more than this many steps; `false` disables the design warning |
 
+### Reserved paths
+
+Some paths belong to core, and a route that claims one fails `createApp`:
+
+- `/__mesh__/control` is reserved in every app, with or without `mesh`.
+- `/__live__` and `/__ready__` are reserved while `health` is on.
+
+[Routing → Reserved paths](/docs/guides/routing/#reserved-paths) has the details, including how a
+WebSocket upgrade to the mesh path is closed.
+
 ### `RequestLimits`
 
 | Field | Default |
