@@ -52,13 +52,23 @@ The core repository commits an API report for each entry point under
 fails when the build no longer matches it. A deliberate change regenerates the report in the same
 pull request, so a reviewer reads the API change as a diff instead of finding it after the release.
 
-## Mesh is outside the promise
+## Mesh is alpha and outside the promise
 
 [Mesh](/docs/guides/mesh/) is `@experimental` and gated behind `createApp({ experimental: true })`,
 so it may change in any release, including between release candidates. Its exports — `MeshConfig`,
 `connectLink`, the manifest and frame types, and the rest — are still in the API reports, so a mesh
 change still shows up in review. The [createApp reference](/docs/reference/createapp/#importable-types)
 marks which exported types are mesh.
+
+**Mesh adapts to the stable API; it does not change it.** Mesh's own surface is:
+
+- its `@experimental` exports;
+- the shape of `MeshConfig` behind the `mesh` option;
+- the `mesh:*` lifecycle events.
+
+A mesh change can alter those and nothing else. It cannot add a `createApp` option, an `App` method or a
+decorator, and it cannot change a stable type. If mesh needs something the stable API does not
+offer, it builds on what is there. So code that does not use mesh is never affected by a mesh change.
 
 ## Currently deprecated
 

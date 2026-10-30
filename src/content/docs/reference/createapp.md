@@ -144,7 +144,7 @@ import type { AppOptions, ExplainNode, WsRequest, WsSocket } from '@green-tea/co
 ### Mesh types — experimental
 
 These are exported from `@green-tea/core` and marked `@experimental`, like the rest of the mesh:
-outside the [API freeze](/docs/stability/#mesh-is-outside-the-promise), so they may change in any
+outside the [API freeze](/docs/stability/#mesh-is-alpha-and-outside-the-promise), so they may change in any
 release.
 
 `MeshConfig`, `Link`, `ReconnectOptions`, `ManifestPolicy`, `Manifest`, `RequestEnvelope`, `Frame`,

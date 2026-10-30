@@ -6,7 +6,7 @@ description: "Distributed dependency injection over a secret-gated WebSocket con
 :::caution[Alpha]
 Mesh is **alpha** — its API and wire protocol may change between releases, and discovery, load-balancing, and failover are not built. It is gated behind an explicit opt-in: `createApp({ mesh, experimental: true })`, and `createApp` **throws** if you configure `mesh` without `experimental: true`. **Don't ship mesh to production yet.**
 
-The mesh exports (`connectLink`, `createMeshControl`, `Manifest`, `MeshConfig` and the rest) are marked `@experimental` and sit outside the API freeze, so they may change in a minor release.
+The mesh exports (`connectLink`, `createMeshControl`, `Manifest`, `MeshConfig` and the rest) are marked `@experimental` and sit outside the API freeze, so they may change in any release. A mesh change stays inside mesh: it never alters the stable API around it. See [API stability](/docs/stability/#mesh-is-alpha-and-outside-the-promise).
 :::
 
 A **teacup** can depend on a token that physically lives on another node — a **teapot**. `@needs('billing')` resolves the same whether `billing` runs in this process or on a remote one. There's no gRPC layer or message-pattern DSL: there's the [graph](/docs/concepts/the-graph/), and some nodes happen to live elsewhere.
