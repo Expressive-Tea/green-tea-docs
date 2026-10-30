@@ -21,6 +21,13 @@ const app = createApp({
 When `tls` is set the server serves https, and WebSocket upgrades become wss on the same
 port — no other changes.
 
+:::note[Node only]
+Native TLS is `app.listen()` on Node. `serveDeno()` and `serveBun()` serve through their runtime's
+own listener, so they **reject** an app created with `tls` rather than serve it as plain HTTP.
+On those runtimes, configure TLS on the runtime's server or terminate it at a proxy, as you would
+on the edge.
+:::
+
 ## `trustProxy`
 
 ```typescript
