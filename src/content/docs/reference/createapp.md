@@ -137,7 +137,6 @@ import type { AppOptions, ExplainNode, WsRequest, WsSocket } from '@green-tea/co
 | `ArgSource` | `@green-tea/core` | where an argument decorator reads from (`ArgSpec.source`) |
 | `GraphNodeView`, `GraphRouteView` | `@green-tea/core` | a node and a route in the `GraphView` that `app.graph()` returns |
 | `StandardIssue`, `StandardResult` | `@green-tea/core` | the issue and result shapes of [Standard Schema](/docs/guides/validation/) |
-| `ResponseShape` | `@green-tea/core` | a materialized response, `{ status, headers, body }`, with `headers` values `string \| string[]` |
 | `DenoServeOptions`, `DenoHttpServer` | `@green-tea/core/deno` | the options of `serveDeno()`, and the server the `DenoServer` it resolves to extends |
 | `BunServeOptions`, `BunServer` | `@green-tea/core/bun` | the options of `serveBun()`, and the server the `BunServeResult` it resolves to extends |
 | `EdgeCtx` | `@green-tea/core/edge` | the Workers execution context (`waitUntil`) that the handler returned by `edgeHandler` takes as its third argument |
@@ -149,6 +148,6 @@ outside the [API freeze](/docs/stability/#mesh-is-outside-the-promise), so they 
 release.
 
 `MeshConfig`, `Link`, `ReconnectOptions`, `ManifestPolicy`, `Manifest`, `RequestEnvelope`, `Frame`,
-`RouteEntry`, `RemoteScopeNode`, `RemoteRoute`, `MeshControlDeps`, `SocketCtor` and
-`EventfulSocket`, along with the functions and constants `connectLink`, `buildRemote`,
+`RouteEntry`, `RemoteScopeNode`, `RemoteRoute`, `MeshControlDeps`, `ResponseShape` (a materialized
+response, public only through those mesh signatures), `SocketCtor` and `EventfulSocket`, along with the functions and constants `connectLink`, `buildRemote`,
 `envelopeFrom`, `buildManifest`, `createMeshControl` and `MESH_CONTROL_PATH`.
