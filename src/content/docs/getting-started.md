@@ -15,19 +15,25 @@ cd my-api && matcha run
 ## Or install by hand
 
 ```bash
-npm install @green-tea/core reflect-metadata
+npm install @green-tea/core@beta reflect-metadata
 # optional, only if you use them:
 npm install ws       # WebSocket routes (@Ws) and mesh
 npm install busboy   # multipart/form-data file uploads
 ```
 
+Until the first stable release, every version publishes under the npm `beta` dist-tag, release
+candidates included. Install with `@beta` explicitly: the day a stable ships, `latest` moves to it
+and your installs stay on the channel you meant.
+
 green-tea runs on **Node ≥ 22, Deno, Bun, and the edge** — the same app, you only swap the entry point. This guide uses Node; see [runtimes](/docs/guides/runtimes/) for the others and for what the edge can't offer.
 
-:::caution[Breaking after 26.9.0-beta.2]
-Up to 26.9.0-beta.2, `@green-tea/core` ran on Node 18 and 20. Both are end-of-life, so from the
-next release Node 22 is the minimum. If you deploy on Node 18 or 20, upgrade Node before you upgrade
-green-tea.
+:::caution[Breaking in RC.1]
+Up to 26.9.0-beta.2, `@green-tea/core` ran on Node 18 and 20. Both are end-of-life, so from RC.1
+Node 22 is the minimum. If you deploy on Node 18 or 20, upgrade Node before you upgrade green-tea.
 :::
+
+From RC.1 the public API is frozen: releases up to the first stable one are fixes only. See
+[API stability](/docs/stability/) for what that covers and how deprecations work after stable.
 
 green-tea uses **legacy** TypeScript decorators. Enable them in your `tsconfig.json`:
 

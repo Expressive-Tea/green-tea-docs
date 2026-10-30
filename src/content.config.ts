@@ -16,7 +16,7 @@ import { documentsCoreVersion } from '../astro.config.mjs';
  * other way to answer.
  */
 const versionBanner = {
-  content: `These docs describe <strong>@green-tea/core ${documentsCoreVersion}</strong> — <a href="https://github.com/Expressive-Tea/green-tea/blob/main/CHANGELOG.md">what changed</a>. Install with <code>npm i @green-tea/core@beta</code>.`,
+  content: `These docs describe <strong>@green-tea/core ${documentsCoreVersion}</strong> — <a href="https://github.com/Expressive-Tea/green-tea/blob/main/CHANGELOG.md">what changed</a>. The public API is <a href="/docs/stability/">frozen from RC.1</a>. Install with <code>npm i @green-tea/core@beta</code>, where release candidates publish too.`,
 };
 
 export const collections = {

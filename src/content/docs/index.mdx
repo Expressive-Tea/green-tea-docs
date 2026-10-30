@@ -40,10 +40,10 @@ green-tea moves that bookkeeping into the framework. You declare what each step 
     Declare `@Sse`, `@Stream`, or `@Ws` and return an `AsyncIterable` — the transport streams it (SSE, ndjson, or a WebSocket duplex) with backpressure and cleanup handled. No separate gateway.
   </Card>
   <Card title="Runs wherever JS runs" icon="laptop">
-    Node, Deno, Bun, and the edge — the same app, you only swap the entry point. HTTP, SSE, and WebSocket behave identically on all four.
+    Node, Deno, Bun, and the edge — the same app, you only swap the entry point. HTTP, SSE, and WebSocket share one API on all four; [Runtimes](/docs/guides/runtimes/) lists where a platform differs.
   </Card>
 </CardGrid>
 
-:::note[Beta]
-green-tea is **beta**, on the RC track. One runtime dependency (`reflect-metadata`); `ws` and `busboy` are optional peers. [mesh](/docs/guides/mesh/) is alpha and gated behind an explicit opt-in.
+:::note[RC.1: the API is frozen]
+From RC.1 the public API of all four entry points is frozen, and releases up to stable are fixes only — see [API stability](/docs/stability/). One runtime dependency (`reflect-metadata`); `ws` and `busboy` are optional peers. [mesh](/docs/guides/mesh/) is alpha, gated behind an explicit opt-in, and outside the freeze.
 :::

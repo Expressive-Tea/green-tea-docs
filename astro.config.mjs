@@ -48,6 +48,7 @@ export default defineConfig({
             // names it, and a second copy of the number in the sidebar can only drift out of step —
             // which it did, sitting at beta.1 through the beta.2 deploy.
             { label: "What's new", slug: 'whats-new' },
+            { label: 'API stability', slug: 'stability' },
           ],
         },
         {
@@ -69,6 +70,7 @@ export default defineConfig({
             { label: 'Streaming & real-time', slug: 'guides/streaming' },
             { label: 'File uploads', slug: 'guides/uploads' },
             { label: 'HTML & views', slug: 'guides/html' },
+            { label: 'Caching & compression', slug: 'guides/caching-and-compression' },
             { label: 'Transport security', slug: 'guides/security' },
             { label: 'Plugins', slug: 'guides/plugins' },
             { label: 'Circuit breakers', slug: 'guides/circuit-breaker' },
