@@ -10,7 +10,7 @@ same app runs on any runtime that speaks the Fetch API — for **HTTP and SSE** 
 const app = createApp({ modules: [ApiModule] });
 
 // Node (native listener, TLS, timeouts)
-app.listen(3000);
+await app.listen(3000); // rejects if the port is taken or a provider fails to boot
 
 // Deno
 Deno.serve(app.fetch);
@@ -79,6 +79,17 @@ same `@Ws` handlers, same rooms/channels everywhere. `app.listen()`, TLS and per
 remain Node-only; on Deno/Bun/edge you get `app.fetch` + the runtime's adapter. **Mesh (alpha)
 runs on Node, Deno and Bun** — teapot and teacup, in any combination — but not on edge.
 
+Same API is not the same behaviour in every detail. The differences this page covers:
+
+- **Compression:** on the edge core never encodes and sets only `Vary`; Cloudflare applies the
+  encoding. Node, Deno and Bun encode in-process.
+- **WebSocket outbound backpressure:** Node, Deno and Bun wait for a slow client's send buffer;
+  workerd reports no buffered amount, so the edge [never waits](#websocket-backpressure).
+- **TLS** is Node-only: `serveDeno()` and `serveBun()` reject an app created with `createApp({ tls })`
+  before they boot or bind, rather than serving plain HTTP to someone who asked for HTTPS.
+- **WebSocket message size** and **`ctx.ip`** are refused and resolved differently per runtime; see
+  [below](#websocket-message-size).
+
 **Connection-limit enforcement is Node-only:** `limits.maxConnections` defaults to `1000`; values
 `<= 0` leave Node's connection count unlimited. Positive values map to Node's
 `server.maxConnections` when the app runs through `app.listen()`. When the cap is reached, Node
@@ -140,7 +151,9 @@ resolves and the effect is the same; keep serving and it is not.
 **Body-size enforcement is the same on every runtime.** `maxBodyBytes` is checked while the body
 is read: a `Content-Length` that already declares more than the limit is refused before any of the
 body is read, and otherwise reading stops at the chunk that crosses it, so an oversized upload is
-never buffered in full. The answer is the same `413` everywhere. The one difference is on workerd,
+never buffered in full. (On Deno, Bun and the edge, a well-formed `Content-Length` within the limit
+is read in one `arrayBuffer()`, since the runtime frames the body by that header; only a chunked
+upload takes the chunk-by-chunk read.) The answer is the same `413` everywhere. The one difference is on workerd,
 which may drop `Content-Length` from a chunked upload, so there the refusal comes from the running
 count rather than up front. See [uploads](/docs/guides/uploads/#limits).
 
@@ -166,11 +179,13 @@ run on Node. Behaviour matches the Node reference.
 
 **Advanced:** `app.upgrade(request, socket)` is the neutral primitive `serveDeno` uses.
 Any runtime can build a `WsSocket` capability (`inbound`, `abort`, `isOpen`, `send`,
-`close`, `terminate`) and drive the graph — `serveBun` and `edgeHandler` build on the
-same primitive (see below).
+`close`, `terminate`, and optionally `drained`) and drive the graph — `serveBun` and `edgeHandler`
+build on the same primitive (see below). `drained()` resolves once the socket's send buffer is at or
+below the adapter's high-water mark, or the socket has closed; the outbound pump awaits it before
+each pull. A socket built without it is never waited on.
 
 **Still Node-only:** `app.listen()`, TLS and per-request timeouts. On Deno you get
-`app.fetch` + `serveDeno`. [Mesh](/docs/guides/mesh/) works here: the control channel is
+`app.fetch` + `serveDeno`, and `serveDeno()` rejects an app created with `tls`. [Mesh](/docs/guides/mesh/) works here: the control channel is
 served through `app.upgrade` and the teacup connects with Deno's global `WebSocket`.
 
 ## WebSocket on Bun
@@ -194,7 +209,7 @@ await serveBun(app, { port: 8000 });
 run on Node and Deno. Behaviour matches the Node reference.
 
 **Still Node-only:** `app.listen()`, TLS and per-request timeouts. On Bun you get
-`app.fetch` + `serveBun`. [Mesh](/docs/guides/mesh/) works here too.
+`app.fetch` + `serveBun`, and `serveBun()` rejects an app created with `tls`. [Mesh](/docs/guides/mesh/) works here too.
 
 ## Cloudflare Workers / edge
 
@@ -241,13 +256,30 @@ every runtime, but only Node and Bun let the server refuse a message before it i
 | Runtime | Oversized message refused | The client sees |
 |---|---|---|
 | Node | before buffering (`ws`'s `maxPayload`) | `1009` |
-| Bun | before buffering (Bun's `maxPayloadLength`) | `1006`: Bun drops the connection without a close frame |
+| Bun | before buffering (Bun's `maxPayloadLength`) | `1009` on Bun 1.4 and later; `1006` before 1.4, which drops the connection without a close frame |
 | Deno | after the whole message is received | `1009` |
 | edge (workerd) | after the whole message is received | `1009` |
 
 Deno and workerd offer no per-message size option, so there the message is held in memory before
 the limit is checked, and only the platform's own cap bounds it. `maxWsQueue` behaves the same on
 all four.
+
+A Bun app that serves as a mesh teapot raises Bun's native limit to the control channel's larger
+bound, so on a user route the framework refuses an oversized message instead, with `1009` on every
+Bun version.
+
+## WebSocket backpressure
+
+A `@Ws` handler's outbound iterator is pulled only while the socket's send buffer is at or below
+1 MiB, so a slow client cannot grow it without limit (see
+[streaming](/docs/guides/streaming/#outbound-backpressure)). Each runtime signals in its own way:
+
+| Runtime | How the wait ends |
+|---|---|
+| Node | `ws`'s `bufferedAmount` and send callback |
+| Bun | `getBufferedAmount()` and the `drain` callback |
+| Deno | polls `bufferedAmount`, since its `WebSocket` has no drain event |
+| edge (workerd) | **never waits**: workerd reports no buffered amount, so buffering is left to the platform |
 
 ## The client address — `ctx.ip`
 
@@ -256,19 +288,35 @@ Bun as it is on Node. All three follow one rule: with `trustProxy` on and an `X-
 header present, `ctx.ip` is the header's first hop; otherwise it is the socket peer. That includes
 `trustProxy` with no `X-Forwarded-For`, which falls back to the peer.
 
+`ctx.ip` is resolved the first time a step, a handler or a plugin reads it, and kept for the rest of
+the request; a route that never reads it pays nothing. What reading it costs depends on the runtime:
+
+| Runtime | Where the address comes from | Cost when read |
+|---|---|---|
+| Node | `req.socket.remoteAddress`, cached by Node per connection | negligible |
+| Deno | `info.remoteAddr`, handed over by `Deno.serve` | negligible |
+| Bun | `server.requestIP()`, a native call per request | 7–11% of a small request |
+| edge | the `cf-connecting-ip` header, under `trustProxy` | negligible |
+
+Behind a proxy that sets `X-Forwarded-For`, `trustProxy: true` takes the address from the header on
+every runtime and never asks the socket. Inside a stream body `ctx.ip` is `''` unless a step or the
+handler read it before returning the stream, because the socket may already be gone by then.
+
 Addresses are passed through as each runtime reports them. The IPv6 loopback is `::1` on all three,
 but Node may report an IPv4 client in IPv4-mapped form, such as `::ffff:127.0.0.1`. Normalize before
 comparing addresses across runtimes.
 
-Two cases have no socket to report, and `ctx.ip` is `''` there (or the forwarded hop, with
-`trustProxy`):
+`app.fetch` handed to a server directly, as in `Deno.serve(app.fetch)` or
+`Bun.serve({ fetch: app.fetch })`, or called from your own code, has no socket to report, so
+`ctx.ip` is `''` there (or the forwarded hop, with `trustProxy`). Only `serveDeno()` and `serveBun()`
+pass the peer along. A `Request` copied from the one the adapter received carries nothing either.
 
-- `app.fetch` handed to a server directly, as in `Deno.serve(app.fetch)` or
-  `Bun.serve({ fetch: app.fetch })`, or called from your own code. Only `serveDeno()` and
-  `serveBun()` pass the peer along. A `Request` copied from the one the adapter received carries
-  nothing either.
-- `edgeHandler`. Trusting `CF-Connecting-IP` is only correct behind Cloudflare,
-  so the edge adapter does not read it.
+`edgeHandler` has no peer address either: workerd exposes none. Under `createApp({ trustProxy: true })`
+it takes `ctx.ip` from `CF-Connecting-IP`, ahead of `X-Forwarded-For`, because Cloudflare sets that
+header itself while `X-Forwarded-For` can carry hops the client supplied. This applies to HTTP and
+WebSocket upgrades alike. Without `trustProxy` the header is ignored and `ctx.ip` is `''`, since
+trusting it is only correct behind Cloudflare. Only `edgeHandler` reads it; the Node, Deno and Bun
+adapters, and a bare `app.fetch`, ignore it.
 
 Anything keyed on `ctx.ip`, such as a rate limiter, needs one of the populated paths. Otherwise every
 client lands in the same bucket.

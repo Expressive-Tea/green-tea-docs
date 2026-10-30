@@ -5,6 +5,8 @@ description: "Distributed dependency injection over a secret-gated WebSocket con
 
 :::caution[Alpha]
 Mesh is **alpha** — its API and wire protocol may change between releases, and discovery, load-balancing, and failover are not built. It is gated behind an explicit opt-in: `createApp({ mesh, experimental: true })`, and `createApp` **throws** if you configure `mesh` without `experimental: true`. **Don't ship mesh to production yet.**
+
+The mesh exports (`connectLink`, `createMeshControl`, `Manifest`, `MeshConfig` and the rest) are marked `@experimental` and sit outside the API freeze, so they may change in any release. A mesh change stays inside mesh: it never alters the stable API around it. See [API stability](/docs/stability/#mesh-is-alpha-and-outside-the-promise).
 :::
 
 A **teacup** can depend on a token that physically lives on another node — a **teapot**. `@needs('billing')` resolves the same whether `billing` runs in this process or on a remote one. There's no gRPC layer or message-pattern DSL: there's the [graph](/docs/concepts/the-graph/), and some nodes happen to live elsewhere.
@@ -140,6 +142,8 @@ something with behaviour, it has never worked — it has been failing at the cal
 
 Mesh proxies **buffered** endpoints. `@Sse`, `@Stream` and `@Ws` routes are not exportable: a remote route is registered as `transport: 'buffer'`, and a handler that returns an `AsyncIterable` over a mesh call fails with `cannot proxy a streaming route`. Streams are a live socket between client and server; there is no meaningful way to relay one through an RPC hop today.
 
+`HEAD` on a remote `GET` route works like a local one: the teacup forwards it as a `GET` and drops the body, so the client gets the `GET`'s status and headers. An explicit remote `HEAD` route still takes precedence.
+
 ## One teapot per route
 
 A route must be exported by exactly **one** teapot. If two export the same method and effective match shape — including patterns that differ only by parameter name, such as `/:id` and `/:name` — boot **fails**, naming both patterns and both teapots:
@@ -168,8 +172,9 @@ A dead upstream is not a broken service, and the status says which:
 
 | What happened | Status |
 | --- | --- |
-| The teapot never connected, so its routes were never registered | **404** Not Found — see [below](#when-a-teapot-is-not-there-yet) |
-| The link is down (closed, or the heartbeat gave up) | **503** Service Unavailable |
+| The teapot has not connected yet, so its routes are not registered | **404** Not Found, until it connects — see [below](#when-a-teapot-is-not-there-yet) |
+| The link is down and reconnecting (closed, or the heartbeat gave up) | **503** Service Unavailable, with `retry-after` |
+| The link gave up for good (`reconnect: false`, or a permanent refusal) | **404** Not Found — its routes were removed |
 | The link is up but the teapot didn't answer in `timeoutMs` | **504** Gateway Timeout |
 | The teapot answered with an error | whatever it said |
 
@@ -192,15 +197,17 @@ mesh: { teapots: [...], reconnect: { initialDelayMs: 500, maxDelayMs: 30_000 } }
 mesh: { teapots: [...], reconnect: false }   // fail once and stay down
 ```
 
-While a link is down its RPCs answer **503 immediately**, and a reconnected link is simply usable again on the next RPC. There is nothing to invalidate or re-register: a remote export holds nothing between requests, so there is no cached value a returning teapot could disagree with.
+While a link is down its RPCs answer **503 immediately**, with `retry-after` set to the seconds until the next attempt, and `Allow` still lists its routes. A reconnected link is simply usable again on the next RPC. There is nothing to invalidate or re-register: a remote export holds nothing between requests, so there is no cached value a returning teapot could disagree with.
 
 `app.close()` is terminal for a link: one the application hung up on never reconnects. Otherwise closing an app would leave a process that cannot exit.
+
+**A link that gives up has its routes removed.** That is a link dropped with `reconnect: false`, or one the teapot refuses permanently (a wrong secret, a protocol mismatch) while it is reconnecting. Its routes then answer **404** and leave `Allow`, because no 503 can promise that waiting helps. A refused reconnect used to retry forever; it now stops, with a warning that names the teapot.
 
 **Reconnection is not failover.** It returns to the *same* teapot. Switching to a different one exporting the same thing needs load balancing, which is not built.
 
 ### A returning manifest that no longer backs the graph
 
-The graph was validated at boot against the manifest the teapot announced then, and it is already serving requests. So if a teapot comes back exporting *less* — a token gone, a route withdrawn — the connection is **refused** rather than adopted:
+The graph was validated at boot against the manifest the teapot announced then, and it is already serving requests. So if a teapot comes back without a **step** the graph was validated against, the connection is **refused** rather than adopted:
 
 ```
 mesh: refusing to reconnect to ws://a/__mesh__/control — its manifest no longer exports
@@ -210,7 +217,14 @@ a partial deploy.
 
 The link keeps retrying, because a rollback or a half-finished deploy can still restore it, and the refusal is logged once per distinct manifest rather than once per attempt. Serving against a manifest that no longer backs the graph would surface as a 500 that looks like your code.
 
-Extra exports are the other direction and are simply **ignored**: the graph is fixed at boot, so new tokens are not spliced into a running app.
+Extra steps are the other direction and are simply **ignored**: the graph is fixed at boot, so new tokens are not spliced into a running app.
+
+**Routes are not part of the graph, so a returning teapot's routes replace its old ones.** A route it added is served; one it dropped answers `404`. A missing route never refuses the connection. Two cases refuse a single route instead, logged with a warning while the teapot's other routes keep serving:
+
+- it conflicts with a route another teapot already serves (the same shape, or an [overlapping constraint](#one-teapot-per-route));
+- it sits on a reserved path: `/__mesh__/control`, or `/__live__` and `/__ready__` with `health` on.
+
+At boot either one still fails the boot. Every change to a teapot's routes emits `mesh:routes` with `{ url, added, removed }` ([lifecycle events](/docs/guides/observability/)).
 
 This is a named policy rather than implicit behaviour:
 
@@ -229,11 +243,13 @@ mesh: { teapots: [...], bootTimeoutMs: 30_000 }   // the default is timeoutMs
 mesh: { teapots: [...], bootTimeoutMs: 0 }        // one attempt, no grace
 ```
 
-Within that budget the connection is retried with backoff. When it passes, the teacup **warns and starts without that teapot**. It can, because every export is a step or a proxied route: nothing needed that link resolved *at boot*, and a step is nothing but later.
+Within that budget the connection is retried with backoff. When it passes, the teacup **warns and starts without that teapot**, and keeps retrying it in the background with the `reconnect` backoff (not with `reconnect: false`). It can, because every export is a step or a proxied route: nothing needed that link resolved *at boot*, and a step is nothing but later.
 
 Starting is not degrading, though, and the difference is worth stating exactly. A teapot that never connected sent no manifest, so the teacup learned nothing about it — no step runners, no routes, a graph identical to the one it would have had if that teapot were never configured. Its routes therefore **404**, through the ordinary unmatched-route path, because nothing was ever registered to match. **503** is what a teapot that connected and *later* died answers: that link exists, its steps and routes are registered, and the dead link is what returns the status. Never reachable and reachable-then-gone are different situations, and they read differently on purpose.
 
-The warning names the teapot and says no manifest was exchanged, so a later 404 on one of its routes has a line to point back to:
+**When a late teapot connects, its routes are served, with no restart. Its steps are not added**, because the graph was validated at boot without them. A local node that needed one of them has already failed the boot, as described below, so nothing that is running depends on them.
+
+The warning names the teapot and says no manifest was exchanged, so a 404 on one of its routes before it connects has a line to point back to:
 
 ```
 mesh: teapot ws://a/__mesh__/control unreachable after 7 attempt(s) over 30000ms (…) — starting
@@ -244,7 +260,7 @@ needs one of its tokens. This line is what a later 404 on one of its routes poin
 
 That last clause is the one thing that still stops a deploy: a local step or handler that `@needs` a token only that teapot exported **fails the boot**, naming the teapot that did not connect. So a teacup that does not depend on an absent teapot starts, and one that does still fails where you can see it. To make a teapot's absence fatal on purpose, have something local need one of its tokens.
 
-**A refusal is not retried.** A wrong secret or a protocol-version mismatch is the teapot's decision and will be the same decision in thirty seconds, so it fails at once rather than spending the whole budget to reach an identical error. The two are told apart by whether the socket ever opened: a peer that accepted the connection and then hung up rejected you on purpose, while one that never accepted it may simply not be listening yet.
+**A refusal is not retried.** A wrong secret or a protocol-version mismatch is the teapot's decision and will be the same decision in thirty seconds, so it fails at once rather than spending the whole budget to reach an identical error. The same refusal while a link is reconnecting ends the link, as [above](#reconnecting). The two are told apart by whether the socket ever opened: a peer that accepted the connection and then hung up rejected you on purpose, while one that never accepted it may simply not be listening yet.
 
 Every retry is logged *and* emitted as `mesh:boot:retry`, so a slow boot is visible to whatever collects [lifecycle events](/docs/guides/observability/) and not only to whoever happens to be watching a terminal. It is kept separate from `mesh:disconnect`, which means a link that was up and went away — this one never came up.
 
@@ -261,7 +277,9 @@ Both are **optional on the wire**, which is why the protocol version did not mov
 The channel is authenticated, but an unauthenticated peer still gets to send bytes at it, so two limits bound what it can do before proving anything:
 
 - **A handshake deadline.** A peer that connects and never sends `hello` is hung up on after 10 seconds. The teacup has always bounded its side; this is the teapot's.
-- **A frame size cap.** `decode` runs `JSON.parse` on peer-controlled input, so frames above 4,000,000 characters are refused with close code `1009` — checked *before* parsing, since parsing is the expensive part being defended. The cap sits above the 1 MB default body limit a legitimate RPC can carry.
+- **Frame size and queue caps, tighter before `hello`.** `decode` runs `JSON.parse` on peer-controlled input, so an oversized frame is refused with close code `1009` *before* parsing, since parsing is the expensive part being defended. Until the peer's `hello` is accepted, the channel takes frames of at most 64 KiB and queues at most 16, closing `1009` or `1013` past that, so an unauthenticated peer can make a teapot hold about 1 MiB per connection. Once `hello` is accepted, a frame may be up to `6 × limits.maxBodyBytes + 1 MiB` (7,048,576 bytes at the 1 MB default) — six times because JSON escaping can grow a body that much, plus room for the envelope — and the queue holds 4,096 frames, or `maxWsQueue` if larger. These bounds are the control channel's own; user `@Ws` routes keep `maxWsMessageBytes` and `maxWsQueue`.
+
+  On Node a peer that sends more than 64 KiB before its `hello` is dropped before `ws` assembles the frame. Bun and Deno offer no per-socket limit to hold that to, so there an unauthenticated peer can still make the teapot receive one frame up to the post-`hello` bound before it is refused. If untrusted peers can reach a Bun or Deno teapot's `/__mesh__/control`, limit frame size at the proxy in front of it.
 
 :::caution[The secret travels in the handshake]
 The shared secret is sent verbatim in the `hello` frame. Over `ws://` that puts it in front of anyone on the path, so **use `wss://`** unless the link already runs inside an encrypted network. green-tea warns at boot for a `ws://` teapot that is not on loopback — a warning rather than a refusal, because a private network doing its own mutual TLS is a real deployment and the framework cannot tell the two apart.
@@ -274,5 +292,5 @@ Peers are separate processes on separate deploy cadences, so the wire is version
 **The version is a compatibility boundary, not a changelog.** It moves only when a peer on the old version would *misparse a frame or misbehave silently* — a field removed, renamed or retyped, a new **required** field, or a new frame type that expects an answer the old peer cannot decode. Adding an **optional** field is none of those, so it does not move the number: `decode` validates only what a frame type requires and passes extras through. Bumping per change would make the number mean "work happened" rather than "we are incompatible", which is the one thing it exists to say.
 
 :::note[Skeleton limitations (by design)]
-No discovery, load-balancing, or failover yet. A teapot that is down when a teacup *boots* is started without — its routes 404 and nothing stands in for it — and reconnection covers only links that connected at least once. A returning manifest is refused rather than reconciled, and extra exports in it are not spliced into the running graph.
+No discovery, load-balancing, or failover yet. A teapot that is down when a teacup *boots* is started without — its routes 404 until it connects, and its steps are never added. A returning manifest missing a step is refused rather than reconciled, and extra steps in it are not spliced into the running graph; its routes replace the old ones.
 :::

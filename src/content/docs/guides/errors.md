@@ -13,10 +13,10 @@ All live in `@green-tea/core`:
 |---|---|
 | `Unauthorized(msg?)` | `401` |
 | `NotFound(msg?)` | `404` |
-| `NotModified()` | `304` |
+| `NotModified()` | `304`, with no body |
 | `Redirect(location)` | `302` + `Location` |
 | `ValidationError` | `422` (raised for you by schema validation) |
-| `HttpError(status, msg?, body?)` | any status |
+| `HttpError(status, msg?, body?, headers?)` | any status |
 | anything else | `500` (message hidden — internals never leak) |
 
 ```typescript
@@ -40,6 +40,39 @@ An `HttpError` can carry a **body** — return a structured payload instead of t
 throw new HttpError(409, 'conflict', { code: 'DUP_EMAIL', field: 'email' });
 // → 409  { "code": "DUP_EMAIL", "field": "email" }
 ```
+
+The fourth argument adds response headers. Values are `string | string[]`, the same as on
+`onError`'s response and on a transformer's: a `set-cookie` array goes out as one `Set-Cookie`
+line per element, any other array as one line joined with `, `.
+
+```typescript
+throw new HttpError(401, 'session expired', undefined, {
+  'set-cookie': setCookie('session', '', { maxAge: 0 }),
+});
+```
+
+## Responses without a body
+
+Two statuses never carry a body, whatever produced them:
+
+- **`304`.** A `304` goes out with no body and none of the `content-*` headers, on every runtime —
+  including one from `throw new NotModified()`, which used to go out with the JSON envelope's
+  `content-type`.
+- **`204` from a handler that returns `undefined`.** With the default JSON transformer, a handler
+  with no `return` answers `204 No Content`, with no body and no `content-type`. Return a value —
+  `null` included, which answers `200` with `null` — to keep a `200`. A route with its own
+  `@Transformer` decides for itself.
+
+That `undefined` is not an error. It used to be: `JSON.stringify(undefined)` is `undefined`, not a
+string, so Node sent an empty `200` labelled `application/json`, and Deno, Bun and the edge answered
+`500` for a handler that did nothing wrong.
+
+## A handler returns a value, not a `Response`
+
+A handler returns a plain value, and its transformer turns that into the response. A Fetch
+`Response` is not a value. A handler that returns one fails the request with a `TypeError` instead of
+going out as `200 {}`, which is what JSON-encoding a `Response` produces. To set the status or
+headers, use `@Transformer`. For an error status, throw an `HttpError`.
 
 ## Render errors your way — `onError`
 

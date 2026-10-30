@@ -153,6 +153,14 @@ class Database {
 Because it's app-scope, a provider is the right home for things you build once and share:
 database clients, config, connection pools.
 
+:::caution[Return the token, not the value]
+`provide()` must return an object holding the token it provides: `return { db: client }`, not
+`return client`. Anything else fails the boot and names the fix, for example `provider 'db' returned
+an object with 'query', but it must return an object holding what it provides: return { db: <value> }`.
+The same rule holds for a step's `run()`, which fails the request instead, and for a plugin node, once
+for every token in its `provides`. A key whose value is `undefined` still counts.
+:::
+
 :::note
 An optional provider (`optional: true`) that throws on boot does **not** abort startup — it is
 left unregistered and logged, and the failure surfaces at request time for routes that need it.
@@ -163,7 +171,8 @@ Query the degraded set with `app.degraded()` or listen for the `boot:provider:fa
 
 A step runs once per request. Its `run(ctx)` receives the accumulated context and either:
 
-- **returns an object** → the pipeline continues and the object is merged into `ctx`, or
+- **returns an object holding the token it provides** (`{ user }`) → the pipeline continues and the
+  object is merged into `ctx`, or
 - **throws** → the request short-circuits (here `Unauthorized` becomes a `401`).
 
 ```typescript
@@ -246,6 +255,40 @@ The payoff of declaring dependencies is that the wiring is checked before a sing
 served. When you `@needs` a token, green-tea verifies some provider or step actually produces
 it. If nothing does, **`createApp` throws with a clear error** instead of letting your handler
 receive `undefined`. Boot fails loudly, so you never serve `undefined`.
+
+The same check refuses two other wirings that would also end in a value nobody wrote.
+
+### One producer per token
+
+A token has exactly one producer. Two nodes that both `provides` the same token fail `createApp`,
+naming both and where they came from — `token 'user' is provided twice: by 'user'
+(module:AppModule) and by 'shadow' (plugin)`. This holds across modules,
+[plugins](/docs/guides/plugins/#what-a-plugin-can-and-cannot-touch), mesh steps and the built-in
+tokens. `overrides` are not a second producer: they replace the runner of a token that already
+exists.
+
+### A node cannot need what it provides
+
+A node whose `needs` include a token it `provides` itself fails as a cycle of one:
+
+```typescript
+@Step({ provides: 'user', needs: ['db', 'user'] })
+class Authenticate { /* ... */ }
+```
+
+```text
+cycle detected: user -> user (it needs 'user', which only it provides). Remove 'user' from its needs, or move the work that produces 'user' into a step it needs.
+```
+
+A `@Step`'s node is named after the token it provides, which is why the message says `user`.
+
+Before RC.1 this booted, and at request time the step read a value nobody had written. Since a token
+has one producer, nothing else can supply it, so the need can never be met. The one exception is a
+seeded token such as `req` or `params`: the node reads the seed, so needing it is fine. `overrides`
+do not exempt the node, because they replace its runner after the graph is checked.
+
+To fix it, remove the token from the node's `needs`, or move the work that produces it into a
+separate provider or step the node needs.
 
 ### Names the framework owns
 

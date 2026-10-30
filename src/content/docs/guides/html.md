@@ -126,6 +126,7 @@ const app = createApp({
 const app = createApp({ modules: [ApiModule], static: true });        // ./public, relative to cwd
 const app2 = createApp({ modules: [ApiModule], static: 'assets' });   // ./assets, relative to cwd
 const app3 = createApp({ modules: [ApiModule], static: '/srv/site' }); // absolute, used as-is
+const app4 = createApp({ modules: [ApiModule], static: { dir: 'assets', cacheControl: 'public, max-age=3600' } });
 ```
 
 - Files are served at their URL path; content-type is inferred from the extension.
@@ -151,6 +152,19 @@ exists.
 One race stays open: a link swapped inside the root between the check and the read can still
 escape. Exploiting it needs write access to the served directory.
 :::
+
+### Caching
+
+Every static file is sent with a weak `ETag` and `Last-Modified` from its `stat`, and with
+`Cache-Control: no-cache`, so browsers keep the file but ask before reusing it. A request whose
+`If-None-Match` (or, failing that, `If-Modified-Since`) still matches answers `304` from the `stat`
+alone, without reading the file; a `HEAD` never reads it either. The object form,
+`static: { dir, cacheControl }`, replaces `no-cache` — `'public, max-age=31536000, immutable'` suits
+content-hashed assets. An unknown key, or a `cacheControl` with CR or LF, throws at `createApp`.
+
+This changed in this release: static hits used to carry only `Content-Type` and were always sent in
+full. Details, and the migration note, are in
+[Caching and compression](/docs/guides/caching-and-compression/#static-files-are-revalidated).
 
 Like the file/template modes of `@Html`, `static` needs a filesystem: it's Node/Deno/Bun only. Configuring it on an edge runtime throws at `createApp()` time — see [Runtimes](/docs/guides/runtimes/).
 

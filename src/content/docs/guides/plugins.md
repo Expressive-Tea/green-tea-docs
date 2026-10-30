@@ -84,14 +84,27 @@ Node names are unique across the app. A plugin node named like an existing provi
 duplicate provider/step name 'user' — names must be unique across modules and plugins
 ```
 
-Tokens are a different matter. `scope.add` takes a node's name and the tokens it provides
-separately, so a plugin node with a name of its own can still provide a token the app already
-provides, and when it does, it takes that token over without a warning. The app's provider drops
-out of every route that needed it. The framework's own tokens (`logger`, `events`, and the request
-seeds `req` and `params`) are not affected, because they are registered after plugins.
+Tokens follow the same rule. `scope.add` takes a node's name and the tokens it provides
+separately, so a plugin node with a name of its own could still try to provide a token something
+else already provides. **A token has one producer**, and a second one fails `createApp`, naming
+both nodes and where they came from:
 
-So give a plugin a token of its own, derived from its `provides` option, and never provide a token
-the app owns.
+```text
+token 'user' is provided twice: by 'user' (module:AppModule) and by 'shadow' (plugin) — a token has exactly one producer; rename one of them, or use `overrides` to replace a runner
+```
+
+The rule is checked on the whole graph, so it covers modules, plugins, steps spliced in from
+[mesh](/docs/guides/mesh/) teapots at boot, and the framework's own tokens `logger`, `rooms` and
+`events`. A plugin node that provides `logger` under another name fails too, whatever order things
+are registered in. `overrides` are not producers — they replace the runner of a token that already
+exists — so they keep working. A step that provides nothing is unaffected.
+
+Before RC.1 the last node registered for a token won, and plugin nodes are registered after module
+nodes, so a plugin could silently replace the app's own provider for every route that needed it.
+Boot failing is the replacement for that.
+
+So give a plugin a token of its own, derived from its `provides` option. The official plugins
+already use name = node name = token.
 
 :::note
 Because execution is per-route (a route runs only the transitive closure of its handler's
@@ -121,6 +134,8 @@ them live in [Observability](/docs/guides/observability/). The short version:
 - `boot:provider:*` — provider lifecycle during boot
 - `stream:open | stream:close | stream:error` — SSE/WS stream lifecycle
 - `mesh:connect | mesh:disconnect | mesh:rpc:error` — mesh link and RPC activity
+- `mesh:boot:retry` — a teapot did not answer during boot and the teacup is trying again
+- `mesh:routes` — a teacup's remote routes changed, with `{ url, added, removed }`
 - `plugin:mounted` — a plugin finished mounting
 
 Every per-request payload carries a `requestId`, so a plugin can attribute events to the request

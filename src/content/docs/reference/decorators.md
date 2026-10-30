@@ -21,6 +21,10 @@ Marks a class as a module and records what it wires together.
 class ApiModule {}
 ```
 
+`mountpoint` is required, and `''` mounts at the root. A module that omits it (possible from
+JavaScript or transpile-only code, which the type cannot stop) fails `createApp` with
+`<Module> @Module metadata is missing mountpoint`.
+
 ### `@Route(prefix)`
 
 Marks a class as a controller; `prefix` is prepended to each route path.
@@ -55,7 +59,9 @@ A request-scope transform that merges keys into the context. Same options as `@P
 
 ### `@Transformer(fn)`
 
-Method decorator. Turns a handler's return value into `{ status?, headers?, body }`. `JsonTransformer` is the default.
+Method decorator. Turns a handler's return value into `{ status?, headers?, body }`. `JsonTransformer` is the default: it answers `200` with the value as JSON, except that a handler returning `undefined` (no `return`) answers `204 No Content` with no body and no `content-type`. `null` is a value, so it still answers `200` with `null`. A route with its own `@Transformer` decides for itself.
+
+Header values are `string | string[]`. A `set-cookie` array is sent as one header line per element on every runtime; any other array is sent as one line joined with `, `. A `vary` array is merged with the `Vary` that security and CORS inject, and those injected headers otherwise stay authoritative. Every `304` goes out without a body or `content-*` headers, whatever the transformer returned.
 
 ### `@Html` / `@Html(path, opts?)`
 
@@ -103,7 +109,11 @@ A handler's signature declares exactly what it wants, in any order.
 | `@body(...)` | parsed body (JSON / urlencoded / multipart) | `()` · `('field')` · `(schema)` |
 | `@headers(...)` | request headers (whole bag or picked) | `()` · `('authorization')` · `(['a','b'])` · `(schema)` |
 | `@header('name')` | one request header (singular alias of `@headers`) | `('x-trace')` · `('x-count', schema)` |
+| `@cookies(...)` | request cookies from the `Cookie` header (also `@needs('cookies')`) | `()` · `('session')` · `(['a','b'])` · `(schema)` |
+| `@cookie('name')` | one request cookie (singular alias of `@cookies`); `undefined` when absent | `('session')` · `('session', schema)` |
 | `@inbound()` | the incoming message stream (WebSocket) | `()` |
 | `@abort()` | the request's `AbortSignal` | `()` |
 
 Passing a [Standard Schema](/docs/guides/validation/) validates and coerces the value before the handler sees it. Full details in [Argument decorators](/docs/guides/arguments/).
+
+To send a cookie, build the header value with `setCookie(name, value, options?)` — `HttpOnly`, `SameSite=Lax`, `Path=/` and `Secure` by default — and put it in a response's `set-cookie` header ([cookies](/docs/guides/arguments/#cookies--cookies-cookie-and-setcookie)).
