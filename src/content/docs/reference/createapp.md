@@ -18,7 +18,7 @@ const app = createApp(options);
 | `devGraph` | `boolean` | `false` | mount `GET /__graph__` ([introspection](/docs/guides/introspection/)) |
 | `devOpenapi` | `boolean` | `false` | mount `GET /__openapi__` serving the [OpenAPI](/docs/guides/openapi/) document |
 | `overrides` | `Record<string, unknown>` | — | swap any node by token ([testing](/docs/guides/testing/)) |
-| `tls` | `TlsOptions` | — | serve over https/wss |
+| `tls` | `TlsOptions` | — | serve over https/wss — Node `listen()` only; `serveDeno`/`serveBun` reject it |
 | `trustProxy` | `boolean` | `false` | honor `X-Forwarded-*` for `ctx.protocol` / `ctx.ip` |
 | `security` | `boolean \| SecurityOptions` | `true` | secure-by-default headers ([security](/docs/guides/security/)) |
 | `cors` | `CorsOptions` | — | CORS handling |
