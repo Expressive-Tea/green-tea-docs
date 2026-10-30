@@ -20,5 +20,8 @@
   },
   "overrides": {
     "postcss-nested": "^7.0.2"
+  },
+  "devDependencies": {
+    "starlight-llms-txt": "^0.12.0"
   }
 }

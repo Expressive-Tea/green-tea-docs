@@ -1,5 +1,6 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import starlightLlmsTxt from 'starlight-llms-txt';
 
 /**
  * The `@green-tea/core` release these pages describe.
@@ -31,6 +32,20 @@ export default defineConfig({
       ],
       // Let the content-backed 404.md own /404; otherwise Astro also injects a conflicting route.
       disable404Route: true,
+
+      // /docs/llms.txt, /docs/llms-full.txt and /docs/llms-small.txt: the docs in the shape LLM
+      // agents read. green-tea is new, so an agent has no training data to fall back on; these, and
+      // the llms.txt that ships inside @green-tea/core, are what it learns the framework from.
+      plugins: [
+        starlightLlmsTxt({
+          projectName: 'green-tea',
+          description:
+            'A TypeScript HTTP framework for Node 22+, Deno, Bun and Cloudflare Workers where the request pipeline is a dependency graph: providers and steps declare what they provide and need, handlers declare what they need in their signature, and the order is derived and validated at boot. It is not Express: there is no middleware chain, no next(), and no req/res mutation.',
+          promote: ['getting-started', 'concepts/**', 'stability'],
+          demote: ['contributors', 'whats-new', 'guides/mesh'],
+          exclude: ['404'],
+        }),
+      ],
 
       title: 'Green Tea.',
       description: 'A zen, opinionated, type-safe framework — your API is a graph, not a chain.',
