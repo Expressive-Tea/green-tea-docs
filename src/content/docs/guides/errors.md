@@ -67,6 +67,13 @@ That `undefined` is not an error. It used to be: `JSON.stringify(undefined)` is 
 string, so Node sent an empty `200` labelled `application/json`, and Deno, Bun and the edge answered
 `500` for a handler that did nothing wrong.
 
+## A handler returns a value, not a `Response`
+
+A handler returns a plain value, and its transformer turns that into the response. A Fetch
+`Response` is not a value. A handler that returns one fails the request with a `TypeError` instead of
+going out as `200 {}`, which is what JSON-encoding a `Response` produces. To set the status or
+headers, use `@Transformer`. For an error status, throw an `HttpError`.
+
 ## Render errors your way — `onError`
 
 Not everything should be JSON. Pass `onError` to `createApp` to render errors however you like — HTML, [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807), content-negotiated, anything. It receives the error and the request, and returns a response — or `undefined` to fall back to the default JSON.
