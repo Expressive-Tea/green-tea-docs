@@ -15,14 +15,14 @@ cd my-api && matcha run
 ## Or install by hand
 
 ```bash
-npm install @green-tea/core@beta reflect-metadata
+npm install @green-tea/core@rc reflect-metadata
 # optional, only if you use them:
 npm install ws       # WebSocket routes (@Ws) and mesh
 npm install busboy   # multipart/form-data file uploads
 ```
 
-Until the first stable release, every version publishes under the npm `beta` dist-tag, release
-candidates included. Install with `@beta` explicitly: the day a stable ships, `latest` moves to it
+Until the first stable release, release candidates publish under the npm `rc` dist-tag, and the
+older betas stay on `beta`. Install with `@rc` explicitly: the day a stable ships, `latest` moves to it
 and your installs stay on the channel you meant.
 
 green-tea runs on **Node ≥ 22, Deno, Bun, and the edge** — the same app, you only swap the entry point. This guide uses Node; see [runtimes](/docs/guides/runtimes/) for the others and for what the edge can't offer.
