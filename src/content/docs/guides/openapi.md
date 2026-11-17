@@ -17,7 +17,7 @@ It reads the routes and handler signatures and produces, for each route:
 
 - the **path**, templated — `/users/:id` → `/users/{id}`, constrained `:id(\d+)` → `{id}`, catch-all `:path*` → `{path}`;
 - the **explicitly declared method**, including `@Head` and `@Options`;
-- **parameters** — path params from the pattern, plus query/header params from the handler's `@query` / `@headers` / `@header` decorators;
+- **parameters** — path params from the pattern, plus query, header and cookie params (`in: cookie`) from the handler's `@query` / `@headers` / `@header` / `@cookies` / `@cookie` decorators. Only named keys become parameters — `@cookie('session')` or `@cookies(['a','b'])`, not a bare `@cookies()`;
 - a **request body** entry for routes that read `@body()`;
 - the systematic **responses** — `200`, a `422` when any argument is schema-validated, and `500`.
 
@@ -40,4 +40,4 @@ This is a **structural** spec: paths, methods, parameters, which routes take a b
 
 - **Request/response body schemas.** [Standard Schema](/docs/guides/validation/) (zod/valibot/arktype) validates input but does not expose a JSON Schema representation, so body shapes are documented generically. Parameter types default to `string`.
 
-Full schemas — declared and enforced on the way out via a `@Produce(schema)` decorator that also validates responses — are on the roadmap for the stable release. For beta, the structural document already drives Swagger UI, client codegen, and API diffing.
+Full schemas — declared and enforced on the way out via a `@Produce(schema)` decorator that also validates responses — are planned for after the stable release, since the API is frozen until then. Until they arrive, the structural document already drives Swagger UI, client codegen, and API diffing.

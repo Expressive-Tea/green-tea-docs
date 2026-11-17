@@ -9,7 +9,7 @@ import starlight from '@astrojs/starlight';
  * not. It is shown on every page because a reader arriving from a search result has no other way
  * to tell whether what they are reading matches what they installed.
  */
-export const documentsCoreVersion = '26.9.0-beta.2';
+export const documentsCoreVersion = '26.11.0-rc.1';
 
 // Docs site for @green-tea/core. Content lives in src/content/docs/**.
 export default defineConfig({
@@ -48,6 +48,7 @@ export default defineConfig({
             // names it, and a second copy of the number in the sidebar can only drift out of step —
             // which it did, sitting at beta.1 through the beta.2 deploy.
             { label: "What's new", slug: 'whats-new' },
+            { label: 'API stability', slug: 'stability' },
           ],
         },
         {
@@ -69,6 +70,7 @@ export default defineConfig({
             { label: 'Streaming & real-time', slug: 'guides/streaming' },
             { label: 'File uploads', slug: 'guides/uploads' },
             { label: 'HTML & views', slug: 'guides/html' },
+            { label: 'Caching & compression', slug: 'guides/caching-and-compression' },
             { label: 'Transport security', slug: 'guides/security' },
             { label: 'Plugins', slug: 'guides/plugins' },
             { label: 'Circuit breakers', slug: 'guides/circuit-breaker' },

@@ -7,6 +7,20 @@ green-tea is one person's spare-time project that other people have started ship
 names them and what they built, because "thanks to our contributors" is worth nothing next to a
 sentence someone can point at.
 
+## In RC.1
+
+**[@otrumb](https://github.com/otrumb)** — [#32](https://github.com/Expressive-Tea/green-tea/pull/32),
+closing [#31](https://github.com/Expressive-Tea/green-tea/issues/31): a `@Module` without a
+`mountpoint` now names itself at boot. The type requires the field, but JavaScript and
+transpile-only code can still leave it out, and `createApp` used to fail with
+`Cannot read properties of undefined (reading 'replace')` from inside the path helper — an error
+that points at the framework rather than at the module that was missing something. It now fails
+with `<Module> @Module metadata is missing mountpoint`, and `mountpoint: ''` still mounts at the
+root.
+
+It came with a test written to fail first, and with the checks that did not pass locally listed in
+the pull request rather than left for review to find.
+
 ## In 26.9.0-beta.1
 
 **[@hgshreyas](https://github.com/hgshreyas)** — [#23](https://github.com/Expressive-Tea/green-tea/pull/23),
@@ -19,7 +33,10 @@ and sheds with `503` + `Retry-After` rather than queueing.
 The interesting part is what it deliberately does *not* count: a returned stream releases its slot
 when the handler returns, not when the connection closes, so an SSE route does not sit on a budget
 slot for hours. A follow-up in the same branch made a dropped connection on Node log a warning
-instead of vanishing silently.
+instead of vanishing silently. That warning closed
+[#17](https://github.com/Expressive-Tea/green-tea/issues/17), which reported that a hit connection
+cap was silent: an operator can now see the drop, though the client still gets a closed socket
+rather than a response.
 
 It arrived with [its own documentation pull request](https://github.com/Expressive-Tea/green-tea-docs/pull/8),
 unprompted, which is the part worth naming.
@@ -41,14 +58,6 @@ a timeout on `app.close()`. Before it, a single stuck handler could hold a deplo
 Everything this release added on top — an app-wide `shutdownTimeoutMs`, the bounded `close()` on the
 Deno and Bun adapters, and the teardown budget — is built on the deadline that pull request
 introduced.
-
-## Also in flight
-
-[@hgshreyas](https://github.com/hgshreyas) is working on
-[#17](https://github.com/Expressive-Tea/green-tea/issues/17) — making a hit connection cap answer the
-client instead of dropping the socket silently. The warning that shipped above is a step toward it,
-not the whole thing: an operator can now see the drop, but the client still gets a closed socket
-rather than a response.
 
 ## Contributing
 

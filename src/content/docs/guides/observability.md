@@ -113,7 +113,12 @@ evidence. `bus` is also a reserved token name, so nothing you declare can quietl
 | `stream:open` / `:close` / `:error` | an SSE, ndjson or WebSocket connection — see [below](#a-stream-is-not-a-request) |
 | `mesh:connect` / `:disconnect` / `:rpc:error` | mesh links |
 | `mesh:boot:retry` | a teapot that has not come up yet, still inside the boot grace ([mesh](/docs/guides/mesh/)) |
+| `mesh:routes` | a teapot's routes changed after boot — it connected late, came back with different routes, or gave up — with `{ url, added, removed }`, each route as `'METHOD /pattern'` |
 | `plugin:mounted` | a plugin registered |
+
+[Health probes](/docs/guides/introspection/#health-probes--createapp-health-) (`createApp({ health: true })`, at `/__live__` and `/__ready__`) emit no lifecycle event: they
+are answered by the adapter ahead of the route table, so `logRequests` and metrics plugins do not see
+them.
 
 ### A stream is not a request
 

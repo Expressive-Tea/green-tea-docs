@@ -2,7 +2,7 @@
   "name": "green-tea-docs",
   "type": "module",
   "private": true,
-  "version": "26.9.0-beta.2",
+  "version": "26.11.0-rc.1",
   "scripts": {
     "dev": "astro dev",
     "clean": "rm -rf dist .astro node_modules/.astro",

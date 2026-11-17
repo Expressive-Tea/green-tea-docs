@@ -26,7 +26,8 @@ route still runs its full closure — you've just substituted what one node prod
 
 :::note
 An override for an unknown token throws. The set of tokens is validated against the real
-graph, so a typo'd or stale override is a construction-time error, not a silent no-op.
+graph when the app boots, so a typo'd or stale override fails `app.boot()`, or the first
+`app.fetch()` (which rejects rather than answering 500). It is never a silent no-op.
 :::
 
 This pairs well with [`app.explain(route)`](/docs/guides/introspection/) — explain the chain to
