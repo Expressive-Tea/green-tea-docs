@@ -33,7 +33,7 @@ jobs:
       # date rather than by anything the release changed, at the moment there is least time
       # to judge whether a fix is safe. What ships here is built HTML, CSS and JS; Astro and
       # Starlight are build-time tools that never reach a visitor. `critical` keeps the
-      # tripwire for the catastrophic case, and ci.yml still gates every PR at `moderate`.
+      # tripwire for the catastrophic case, and ci.yml gates every PR the same way.
       - run: npm audit --audit-level=critical
       - run: npm run build
       - name: Package dist/
