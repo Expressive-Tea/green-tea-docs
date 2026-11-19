@@ -13,6 +13,14 @@ framework, and nothing it generates is CLI-specific. If you would rather write t
 
 ## Install
 
+With Homebrew, on macOS or Linux:
+
+```bash
+brew install expressive-tea/tap/matcha
+```
+
+Or with the install script:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Expressive-Tea/matcha/main/install.sh | sh
 ```

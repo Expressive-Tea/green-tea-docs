@@ -1,5 +1,6 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import starlightLlmsTxt from 'starlight-llms-txt';
 
 /**
  * The `@green-tea/core` release these pages describe.
@@ -17,6 +18,20 @@ export default defineConfig({
   base: '/docs',
   integrations: [
     starlight({
+      // Serves /docs/llms.txt, /docs/llms-full.txt and /docs/llms-small.txt. The scaffolded AGENTS.md
+      // from `matcha new` links llms-full.txt, so removing this breaks every generated project.
+      plugins: [
+        starlightLlmsTxt({
+          projectName: 'green-tea',
+          optionalLinks: [
+            {
+              label: 'Package llms.txt',
+              url: `https://cdn.jsdelivr.net/npm/@green-tea/core@${documentsCoreVersion}/llms.txt`,
+              description: 'the condensed rules and API for this version, as shipped inside @green-tea/core',
+            },
+          ],
+        }),
+      ],
       // GoatCounter — same site code as the marketing site, so /docs traffic lands in
       // the same dashboard and referrer paths stay comparable.
       head: [
@@ -79,6 +94,7 @@ export default defineConfig({
             { label: 'OpenAPI', slug: 'guides/openapi' },
             { label: 'Runtimes', slug: 'guides/runtimes' },
             { label: 'Testing', slug: 'guides/testing' },
+            { label: 'AI coding agents', slug: 'guides/ai-agents' },
             { label: 'Mesh (alpha)', slug: 'guides/mesh', badge: { text: 'alpha', variant: 'caution' } },
           ],
         },
