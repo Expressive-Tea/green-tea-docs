@@ -1,6 +1,6 @@
 ---
 title: API stability
-description: "What the RC.1 freeze covers, what may change between RC.1 and stable, and how deprecations work after stable."
+description: "What the RC.1 freeze covers, what may change between RC.1 and stable, and why after stable only the first release of a year can break."
 ---
 
 **From the first release candidate (RC.1), the public API of `@green-tea/core` is frozen.** The
@@ -32,7 +32,23 @@ If a fix turns out to need an API change, the freeze is reopened for it on purpo
 bent quietly, and the CHANGELOG lists the change under `### Breaking`. So the CHANGELOG is the one
 place to check: a release candidate with no `### Breaking` section changed no public API.
 
-## After stable: deprecations come before removals
+## After stable: only the year breaks
+
+Versions are calendar versions, `YY.M.PATCH`, and npm reads the year as the major version. After
+the first stable release, a release inside a year (`26.12.0`, `27.3.1`) never removes or breaks a
+public API, so the range npm writes by default, `^26.12.0`, is safe to take. Breaking changes ship
+only in the **first release of a year** (`27.1.0`, `28.1.0`): that is the one release to read
+before upgrading, and a `^` range never crosses into it on its own.
+
+The one exception is a security fix that cannot be made without breaking an API. It ships when it
+is ready, listed under both `### Security` and `### Breaking`.
+
+Which releases receive fixes, and for how long, is in the core repository's
+[SECURITY.md](https://github.com/Expressive-Tea/green-tea/blob/main/SECURITY.md#supported-versions):
+the latest monthly release gets bug and security fixes, and the one before it gets security fixes
+for three months after the latest ships.
+
+## Deprecations come before removals
 
 Once a stable release has shipped, nothing public disappears without notice:
 
@@ -41,7 +57,9 @@ Once a stable release has shipped, nothing public disappears without notice:
   you use it.
 - Where it has a runtime path, it **warns once per process** through `app.logger` — never
   `console`, so the warning goes wherever you sent the rest of the framework's diagnostics.
-- It is removed only in a release whose CHANGELOG lists the removal under `### Breaking`.
+- It is removed only in the first release of a year, whose CHANGELOG lists the removal under
+  `### Breaking`. Something deprecated in `26.4.0` goes in `27.1.0`; something deprecated in
+  `26.12.0`, too late for two monthly releases before January, goes in `28.1.0`.
 
 A type has no runtime path, so a deprecated type warns only in your editor.
 
