@@ -96,5 +96,6 @@ offer, it builds on what is there. So code that does not use mesh is never affec
 
 ## What this page does not cover
 
-The [matcha](/docs/guides/cli/) CLI ships from its own repository on its own version line, so
-nothing here speaks for it.
+The [matcha](/docs/guides/cli/) CLI ships from its own repository. Since RC.1 it releases together
+with core and carries the same version: matcha `26.11.0-rc.2` scaffolds `@green-tea/core`
+`26.11.0-rc.2`. This page covers the core API only and says nothing about matcha's commands.
