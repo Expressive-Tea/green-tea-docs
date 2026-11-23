@@ -118,10 +118,15 @@ So decide which kind of source you have, and say so:
 ### When a stream fails part-way
 
 A source that throws mid-stream is reported the same way on every runtime: the framework writes the
-encoder's error frame — `event: error` with the message, for SSE — and then closes the response
+encoder's error frame (`event: error`, for SSE) and then closes the response
 cleanly, and emits `stream:error` on the [bus](/docs/guides/observability/). A consumer that received
 an `error` event knows what happened; a connection that merely dropped tells it nothing, which is why
 the frame comes first.
+
+The frame carries an `HttpError`'s message, and `Internal Server Error` for anything else, as a
+buffered route would. The full error, message and stack, goes to `stream:error` only. Up to RC.1 the
+frame carried the raw `err.message`, so a database error's connection string could reach the
+client.
 
 ### `ctx.ip` inside a stream body
 
@@ -152,7 +157,9 @@ class ChatController {
 }
 ```
 
-`channel<T>()` is a multicast `AsyncIterable` with `push` / `close` / `fail` and an optional bounded buffer (`channel({ buffer: 100 })`, drop-oldest).
+`channel<T>()` is a multicast `AsyncIterable` with `push` / `close` / `fail` and a bounded buffer per subscriber: 1024 values by default, dropping the oldest. Set it with
+`channel({ buffer: 100 })`; `channel({ buffer: Infinity })` restores the unbounded buffer RC.1 had,
+which lets one slow client grow server memory without limit.
 
 :::note[WebSocket needs the `ws` peer]
 `@Ws` (and mesh) require the optional [`ws`](https://github.com/websockets/ws) peer dependency — `npm i ws`. SSE, ndjson, and plain HTTP need nothing extra.

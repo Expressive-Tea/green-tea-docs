@@ -45,7 +45,7 @@ graph.
 in, plus built-ins. Use it to read values like `ctx.protocol` and `ctx.ip`.
 
 `ctx.ip` is the client address: the socket peer, or, when `trustProxy` is on and the request has
-an `X-Forwarded-For` header, that header's first hop. On the edge, under `trustProxy`,
+an `X-Forwarded-For` header, that header's last (right-most) entry: the address your proxy saw. On the edge, under `trustProxy`,
 `cf-connecting-ip` wins over both, because Cloudflare sets it itself. A bare `app.fetch(request)`
 from your own code has no socket, so there it is `''` unless a trusted header supplies it.
 

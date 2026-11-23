@@ -35,7 +35,9 @@ const app = createApp({ modules: [App], trustProxy: true });
 ```
 
 Behind a reverse proxy, reads `X-Forwarded-Proto` / `X-Forwarded-For` to populate
-`ctx.protocol` (`'http' | 'https'`) and `ctx.ip` (read via `@ctx()`). Off by default —
+`ctx.protocol` (`'http' | 'https'`) and `ctx.ip` (read via `@ctx()`), on every runtime. `ctx.ip` is
+the **right-most** `X-Forwarded-For` entry, the one your proxy appended; the entries to its left are
+whatever the client sent. Off by default —
 forwarded headers are ignored (and spoofable) until you opt in. It trusts the immediate hop
 unconditionally; there's no CIDR allowlist yet.
 
@@ -62,6 +64,9 @@ route or the router's automatic `204` + `Allow` response.
 
 - With `credentials: true`, the server **never** sends `Access-Control-Allow-Origin: *` — it
   echoes the concrete allowed origin (or blocks the request).
+- `origins: '*'` with `credentials: true` **fails `createApp`**. Together they would let any site
+  make credentialed reads. List the trusted origins, or, if an open credentialed API is really the
+  intent, write it as a predicate (`origins: () => true`) so the decision is visible in the code.
 
 ### When `origins` is a predicate
 
@@ -79,11 +84,6 @@ that failed has not said yes, and a backing store being briefly unavailable must
 allowlist. Watch the logs for it — from the outside, a broken lookup and a genuinely disallowed
 origin look the same to the caller, which is the price of failing closed.
 
-:::caution[Reflect-any foot-gun]
-`origins: '*'` together with `credentials: true` reflects *any* origin with credentials
-attached. Only combine them if you truly intend an open credentialed API; prefer an explicit
-allowlist.
-:::
 
 ## `security` (headers, ON by default)
 
@@ -108,6 +108,19 @@ const app = createApp({ modules: [App], security: { csp: "default-src 'self'" } 
 WebSocket handshake (101/upgrade) response.
 :::
 
+## WebSocket origins
+
+CORS does not apply to WebSockets: a browser opens one from any page and sends the user's cookies
+with it. So every adapter checks the upgrade's `Origin` itself, and refuses with `403` unless:
+
+- there is no `Origin` header (not a browser: a server, a CLI, a test client),
+- the `Origin` is on the same host as the request, or
+- `cors.origins` allows it.
+
+`Origin: null` is refused. The mesh control channel is exempt, since it authenticates with its
+secret. A browser client served from another origin, or an app behind a proxy that rewrites `Host`,
+needs that origin in `cors.origins`.
+
 :::caution[TLS + trustProxy]
 HSTS is emitted only when the connection is judged secure. With `trustProxy: true` that
 judgement trusts the incoming `X-Forwarded-Proto` header — so a client that spoofs
@@ -126,7 +139,10 @@ These hold by default, with nothing to turn on:
   (`maxWsMessageBytes`, `maxWsQueue`), closing with `1009` / `1013`:
   [streaming](/docs/guides/streaming/#inbound-limits).
 - **Static files** never resolve outside the static root, through `../` or through a symlink, and
-  an escape is a `404`, not a `403`: [HTML & views](/docs/guides/html/#static-files--createapp-static-).
+  an escape is a `404`, not a `403`. Dotfiles (`/.env`, `/.git/config`) are never served: [HTML & views](/docs/guides/html/#static-files--createapp-static-).
+- **Slow clients** cannot hold Node's connection slots: a socket still sending headers past
+  `headersTimeoutMs` is closed within a second, and a WebSocket peer that stops answering pings is
+  dropped within a minute.
 - **`ctx.ip`** is the client address on Node and through `serveDeno()` / `serveBun()`, so anything
   keyed on it, such as a rate limiter, does not put every client in one bucket:
   [runtimes](/docs/guides/runtimes/#the-client-address--ctxip).

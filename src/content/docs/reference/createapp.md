@@ -84,7 +84,7 @@ WebSocket upgrade to the mesh path is closed.
 
 ### `CorsOptions`
 
-`{ origins, methods?, allowedHeaders?, exposedHeaders?, credentials?, maxAge? }`. `origins` is a string, array, `'*'`, or a `(origin) => boolean` predicate. `credentials: true` is never combined with `'*'`.
+`{ origins, methods?, allowedHeaders?, exposedHeaders?, credentials?, maxAge? }`. `origins` is a string, array, `'*'`, or a `(origin) => boolean` predicate. `origins: '*'` with `credentials: true` fails `createApp`; list the origins, or pass a predicate.
 
 ### `SecurityOptions`
 
