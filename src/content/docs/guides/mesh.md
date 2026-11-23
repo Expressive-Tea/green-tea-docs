@@ -17,7 +17,7 @@ Exports are opt-in (`export: true`) on **steps and routes** — a provider canno
 
 Mesh runs on **Node, Deno and Bun**, as both teapot and teacup, in any combination — a Deno teapot can serve a Node teacup. The wire is JSON over a WebSocket, so peers only have to agree on the protocol version, not the runtime.
 
-**Edge (Cloudflare Workers) is not supported.** The teapot's secret comparison uses `node:crypto`'s `timingSafeEqual`, which workerd's `nodejs_compat` does not provide.
+**Edge (Cloudflare Workers) is not supported.** The teapot's secret comparison uses `node:crypto`'s `timingSafeEqual`, which workerd's `nodejs_compat` does not provide, and a teacup's links are long-lived outbound sockets a Worker cannot hold. `createApp` with `mesh` throws inside a Worker, and so does `edgeHandler` given such an app, so the mistake surfaces at startup rather than on some later request.
 
 You do **not** need `listen()`. `serveDeno` and `serveBun` boot the graph before they bind, so a teacup has reached its teapots — or spent its `bootTimeoutMs` grace trying — by the time the port opens:
 
@@ -63,7 +63,7 @@ class TeacupModule {}
 const teacup = createApp({
   modules: [TeacupModule],
   experimental: true,
-  mesh: { teapots: [{ url: 'ws://A-host:3002/__mesh__/control', secret: 'shh' }] },
+  mesh: { teapots: [{ url: 'wss://A-host:3002/__mesh__/control', secret: 'shh' }] },
 });
 await teacup.listen(3003);
 // GET B:3003/api/local/who  (x-token: abc)
@@ -76,7 +76,77 @@ await teacup.listen(3003);
 
 That is also why a **provider cannot be exported**. A provider is a factory whose value *is* the object it builds — a pool, a client, a `db` — and an object is not what a JSON wire carries. What used to cross was whatever half of it survived serialization, cached app-scope on the teacup for the life of the process, out of a cache the teapot no longer stood behind. Export a `@Step` that returns what the provider's value carried instead; the [next section](#what-can-cross-data-never-behaviour) has the shape.
 
+On the teapot, a call runs the exported step and only what that step needs: the providers and steps in its own closure, sliced once at boot the way a route's are. A step nobody asked for does not run, and one that throws cannot break an export that does not depend on it.
+
+A route is exported per method: `@Get('/items/:id', { export: true })` exports the `GET`, and a teacup asking for a `DELETE` on the same pattern is refused unless that handler is exported too. When a remote step fails, its client sees what it would see locally: an `HttpError`'s status and message, or `500 Internal Server Error` for anything else. The full error stays on the teapot, in its `mesh:rpc:error` event.
+
 Remote tokens become synthetic nodes in the local graph with RPC-backed runners, so the rest of the pipeline is unchanged. For non-mesh apps `createApp` stays synchronous; a mesh app defers graph finalization until it boots — connecting to teapots is network I/O — and boots on whichever comes first: `app.fetch`, `app.upgrade` or `listen()`. Whoever triggers it, it happens once.
+
+## A complete example: one REST API on two processes
+
+The core repository has a runnable version of all of this in [`example/mesh/`](https://github.com/Expressive-Tea/green-tea/tree/develop/example/mesh): a small shop split across two nodes, with a test that runs it as two real processes.
+
+- **`billing.ts`** is the teapot. It owns a ledger, which it never exports, and exports a step, `balance`, plus its REST routes under `/billing`.
+- **`shop.ts`** is the teacup. Its checkout route needs `balance` exactly as it would need a local step, and it serves billing's routes as if they were its own.
+
+The two halves that matter:
+
+```typescript
+// billing.ts: computed on billing, per request, from the caller's route params
+@Step({ provides: 'balance', needs: ['ledger'], export: true })
+class BalanceStep {
+  run(ctx: { ledger: Ledger; params: { customer?: string } }) {
+    const customer = ctx.params.customer ?? '';
+    const due = ctx.ledger.invoices(customer).filter((i) => !i.paid).reduce((sum, i) => sum + i.amount, 0);
+    return { balance: { customer, due } };
+  }
+}
+
+@Route('/billing')
+class BillingController {
+  @Get('/invoices/:customer', { export: true })
+  list(@needs('ledger') ledger: Ledger, @param('customer') customer: string) { /* … */ }
+
+  @Post('/invoices/:customer', { export: true })
+  create(@needs('ledger') ledger: Ledger, @param('customer') customer: string, @body() data: { amount?: unknown }) { /* … */ }
+}
+```
+
+```typescript
+// shop.ts: nothing here says where `balance` lives; only the mesh config does
+@Route('/shop')
+class CheckoutController {
+  @Get('/checkout/:customer')
+  checkout(@needs('balance') balance: { customer: string; due: number }) {
+    return { customer: balance.customer, due: balance.due, canCheckout: balance.due === 0 };
+  }
+}
+
+createApp({
+  modules: [ShopModule],
+  experimental: true,
+  mesh: {
+    teapots: [{ url: 'ws://127.0.0.1:3401/__mesh__/control', secret }],
+    reconnect: { initialDelayMs: 100, maxDelayMs: 1_000 },
+  },
+});
+```
+
+Run it from a checkout of the core repository. Start billing first: checkout needs `balance` at boot, and a teacup refuses to boot without a producer for a token it needs.
+
+```bash
+npx tsx example/mesh/billing.ts      # teapot on :3401
+npx tsx example/mesh/shop.ts         # teacup on :3400, in a second terminal
+```
+
+```bash
+curl localhost:3400/shop/checkout/ada                      # {"customer":"ada","due":40,"canCheckout":false}
+curl -X POST -H 'content-type: application/json' \
+     -d '{"amount":10}' localhost:3400/billing/invoices/ada   # served by billing, through the shop
+curl localhost:3400/billing/invoices/ada                   # both invoices
+```
+
+Now stop billing. The shop keeps running, and everything that needs billing answers `503` with `retry-after`: the checkout, and billing's own routes. Start billing again and the shop reconnects on its own within about a second. The ledger lives in memory, so it starts over. That is the whole failure story of a teapot that [goes away](#when-a-teapot-goes-away) and [comes back](#reconnecting), on your machine, in four commands.
 
 ## Inspecting a mesh graph
 
@@ -282,7 +352,7 @@ The channel is authenticated, but an unauthenticated peer still gets to send byt
   On Node a peer that sends more than 64 KiB before its `hello` is dropped before `ws` assembles the frame. Bun and Deno offer no per-socket limit to hold that to, so there an unauthenticated peer can still make the teapot receive one frame up to the post-`hello` bound before it is refused. If untrusted peers can reach a Bun or Deno teapot's `/__mesh__/control`, limit frame size at the proxy in front of it.
 
 :::caution[The secret travels in the handshake]
-The shared secret is sent verbatim in the `hello` frame. Over `ws://` that puts it in front of anyone on the path, so **use `wss://`** unless the link already runs inside an encrypted network. green-tea warns at boot for a `ws://` teapot that is not on loopback — a warning rather than a refusal, because a private network doing its own mutual TLS is a real deployment and the framework cannot tell the two apart.
+The shared secret is sent verbatim in the `hello` frame. Over `ws://` that puts it in front of anyone on the path, so **use `wss://`**. `createApp` refuses a `ws://` teapot that is not on loopback (`localhost`, `127.0.0.0/8`, `[::1]`), before anything connects. A private network that already encrypts the link, such as a service mesh doing mutual TLS, is a real deployment the framework cannot tell apart from an exposed one, so it can opt in with `mesh: { allowInsecure: true }`; each such teapot is still logged as a warning.
 :::
 
 ## Protocol version

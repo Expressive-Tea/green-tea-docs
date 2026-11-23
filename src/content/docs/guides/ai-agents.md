@@ -51,7 +51,7 @@ It matches the installed version and overrides what you know about Express-style
 **Deno (JSR).** There is no `node_modules`; link the copy on JSR for your version:
 
 ```md
-https://jsr.io/@green-tea/core/26.11.0-rc.1/llms.txt
+https://jsr.io/@green-tea/core/26.11.0-rc.2/llms.txt
 ```
 
 **Chat tools with no file access.** Paste the file in, or give it this URL if the tool can fetch:

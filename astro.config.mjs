@@ -10,7 +10,7 @@ import starlightLlmsTxt from 'starlight-llms-txt';
  * not. It is shown on every page because a reader arriving from a search result has no other way
  * to tell whether what they are reading matches what they installed.
  */
-export const documentsCoreVersion = '26.11.0-rc.1';
+export const documentsCoreVersion = '26.11.0-rc.2';
 
 // Docs site for @green-tea/core. Content lives in src/content/docs/**.
 export default defineConfig({

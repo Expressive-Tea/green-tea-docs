@@ -132,6 +132,8 @@ const app4 = createApp({ modules: [ApiModule], static: { dir: 'assets', cacheCon
 - Files are served at their URL path; content-type is inferred from the extension.
 - `/` (and any directory-shaped path) resolves to `index.html`.
 - Only `GET` and `HEAD` are handled — other methods fall through.
+- **Dotfiles are never served.** A path with any segment starting with `.` (`/.env`, `/.git/config`)
+  is a `404`. Under `/.well-known/` the directory is served, but a dotfile inside it still is not.
 - **Declared routes always win.** Static is only consulted when nothing matched, so `@Get('/api/ping')` is never shadowed by a file at `public/api/ping`.
 - Path traversal (`../`, encoded or not) is rejected — a request can't escape the static root.
 - Symlinks are confined to the root too. A file, or a directory's `index.html`, is served only if

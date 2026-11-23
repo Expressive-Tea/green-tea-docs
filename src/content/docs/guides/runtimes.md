@@ -94,7 +94,9 @@ Same API is not the same behaviour in every detail. The differences this page co
 `<= 0` leave Node's connection count unlimited. Positive values map to Node's
 `server.maxConnections` when the app runs through `app.listen()`. When the cap is reached, Node
 destroys excess sockets without sending an HTTP response. `Deno.serve` and `Bun.serve` expose no
-equivalent active-socket cap, so `serveDeno` and `serveBun` cannot enforce this option. Apply the
+equivalent active-socket cap, so `serveDeno` and `serveBun` cannot enforce this option. They, and
+`edgeHandler`, warn through the app's logger at startup, naming each Node-only limit the app set
+(`maxConnections`, `requestTimeoutMs`, `headersTimeoutMs`, `keepAliveTimeoutMs`). Apply the
 connection limit at the deployment platform or reverse proxy on those runtimes.
 
 `limits.maxConcurrentRequests` is separate from the connection limit and applies per server or Fetch adapter instance, so an app using both `app.listen()` and `app.fetch` has two independent request budgets. It bounds concurrently executing handlers; a handler that never returns continues to hold its slot, while on Node a client disconnect releases that slot. Excess requests receive `503 Service Unavailable` with `Retry-After: 1`.
@@ -285,7 +287,8 @@ A `@Ws` handler's outbound iterator is pulled only while the socket's send buffe
 
 `serveDeno()` and `serveBun()` give `app.fetch` the socket peer, so `ctx.ip` is populated on Deno and
 Bun as it is on Node. All three follow one rule: with `trustProxy` on and an `X-Forwarded-For`
-header present, `ctx.ip` is the header's first hop; otherwise it is the socket peer. That includes
+header present, `ctx.ip` is the header's right-most entry, the one your proxy appended; otherwise it
+is the socket peer. That includes
 `trustProxy` with no `X-Forwarded-For`, which falls back to the peer.
 
 `ctx.ip` is resolved the first time a step, a handler or a plugin reads it, and kept for the rest of
@@ -299,7 +302,10 @@ the request; a route that never reads it pays nothing. What reading it costs dep
 | edge | the `cf-connecting-ip` header, under `trustProxy` | negligible |
 
 Behind a proxy that sets `X-Forwarded-For`, `trustProxy: true` takes the address from the header on
-every runtime and never asks the socket. Inside a stream body `ctx.ip` is `''` unless a step or the
+every runtime and never asks the socket. It takes the right-most entry because the client writes
+everything to the left of it: up to RC.1 core took the left-most, so a client that sent
+`X-Forwarded-For: 6.6.6.6` got that address in `ctx.ip`. Behind a chain of several proxies, the
+right-most entry is the address the last proxy saw. Inside a stream body `ctx.ip` is `''` unless a step or the
 handler read it before returning the stream, because the socket may already be gone by then.
 
 Addresses are passed through as each runtime reports them. The IPv6 loopback is `::1` on all three,

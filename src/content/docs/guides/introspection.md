@@ -127,7 +127,7 @@ const app = createApp({ modules: [ApiModule], health: true });
   |---|---|
   | booting — until `boot()` resolves | `503 {"status":"booting"}` |
   | ready | `200 {"status":"ok"}` |
-  | ready, with degraded optional providers | `200 {"status":"degraded","degraded":["cache"]}` (from `app.degraded()`) |
+  | ready, with degraded optional providers | `200 {"status":"degraded"}`. The names are in the boot log and `app.degraded()`, not in a public probe. |
   | draining — from the moment `close()` starts | `503 {"status":"draining"}` |
 
   The state only moves forward: a boot that finishes after `close()` started stays draining.
